@@ -47,13 +47,13 @@ namespace Lively_World
 
             if (hitch.IsInVehicle(Taxi))
             {
-               if(LivelyWorld.Debug) UI.Notify("Taxi event mode: dropoff");
+               if(LivelyWorld.Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Taxi event mode: dropoff");
                 DropOff = true;
                  //Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD, Driver, Taxi, pos.X, pos.Y, pos.Z, 10f, 1, Taxi.Model, 1 + 2 + 8 + 16 + 32 + 128 + 256, 15.0, 1.0);
             }
             else
             {
-                if (LivelyWorld.Debug) UI.Notify("Taxi event mode: pick up");
+                if (LivelyWorld.Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Taxi event mode: pick up");
 
                 Vector3 pos = hitch.Position;
                 Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD, Driver, Taxi, pos.X, pos.Y, pos.Z, 10f, 1, Taxi.Model, 1 + 2 + 8 + 16 + 32 + 128 + 256, 15.0, 1.0);

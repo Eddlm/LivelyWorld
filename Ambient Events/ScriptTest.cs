@@ -37,52 +37,95 @@ enum WeatherType
     X_MAS = -1429616491
 };
 
+
+/// <summary>
+/// Fixes:
+/// Fixed peds driving out too fast and ignoring traffic lights
+/// Made flatbeds only spawn cargo if they're slow or stopped
+/// Fixed the spawner patience
+/// Fixed the Replacer, it was replacing persistent vehicles too
+/// </summary>
+
+
+//Events are big and scarce. Scenarios are small, happen frequently and serve as details more than anything.
 public enum EventType
 {
-    DriverRushing, //Moving
-    Carjacker, //Static
-    Taxi, //Moving
-    EmergencyRushing, //Moving
-    Tow, //Moving
-    Racer, Bennys, //Moving
-    Deal, //Static
-    Hunter,AnimalTrophy, //Static
-    GangDriveby, //Moving
-    VehicleInteraction, //Moving
-    ImprovedFreight, //HandleFreight
-    ImprovedFlatbeds, //HandleFreight
 
-    BarnFinds,
+    Carjacker,
+    EmergencyRushing,
+    Tow,
+    Racer,
+    Deal,
+    Hunter,
+    GangDriveby,
 };
 
+public enum DebugLevel
+{
+    None, EventsAndScenarios, Everything
+}
+
+public enum ScenarioType
+{
+    CopCarCarryingCopBike,
+    DriverOvertake,
+    PlayerCoolCarPhoto,
+    AmbientTuner,
+    DriverRushing,
+    Taxi,
+    ImprovedTowtrucks,
+    AnimalTrophies,
+    VehicleInteraction,
+    ImprovedFreight,
+    ImprovedFlatbeds,
+    BarnFinds,
+    StoppedAtLightsInteraction,
+    LoudRadio,
+    StrippedCar,
+}
 public class LivelyWorld : Script
 {
 
     int Generator = -1;
+    int EmergencyScore = 0;
+    int Crimescore = 0;
 
     public string ScriptName = "Lively World";
-    string ScriptVer = "0.5";
+    string ScriptVer = "0.5.4";
 
     public static bool DebugOutput = false;
 
-    public static bool Debug = false;
+    public static DebugLevel Debug = DebugLevel.None;
     public static bool DebugBlips = false;
 
     public static int ReplacerTime = 0;
     public static int VehMonitorTime;
     public static int BlackistedEventsTime;
-    int SmallEventCooldownTime = Game.GameTime+10000;
-    int SpawnerEventCooldownTime = Game.GameTime+20000;
+    int SmallEventCooldownTime = Game.GameTime + 50000;
+    int EventCooldownTime = Game.GameTime + 60000;
     int Interval = 1000;
+
+
+    Ped CoolCarPed = null;
+
     public static List<Vector3> AmbientHeliLanding = new List<Vector3>
     {
         new Vector3 (-144,-593,211),
     };
     public static List<EventType> BlacklistedEvents = new List<EventType>();
+
+    public static List<ScenarioType> ScenarioFlow = new List<ScenarioType>();
+    public static List<EventType> Eventflow = new List<EventType>();
+
     public static List<VehicleHash> HuntingTrucks = new List<VehicleHash>
         {
             VehicleHash.Picador,VehicleHash.Dubsta3,VehicleHash.Bison,VehicleHash.Rebel, VehicleHash.Rebel2,VehicleHash.Sadler,VehicleHash.BobcatXL,VehicleHash.Sandking,VehicleHash.Sandking2
         };
+
+    public static List<EventType> CurrentlyAllowedEvents = new List<EventType>();
+
+    public static List<ScenarioType> CurrentlyAllowedScenarios = new List<ScenarioType>();
+    public static List<string> GangAreas = new List<string> { "CHAMH", "DAVIS", "RANCHO", "CYPRE" };
     public static int BlackistedImportantEventsTime;
     public static int BlackistedImportantEventsCooldown;
 
@@ -92,11 +135,12 @@ public class LivelyWorld : Script
 
 
     public static List<EventType> DisabledEvents = new List<EventType>();
+    public static List<ScenarioType> DisabledScenarios = new List<ScenarioType>();
 
 
     Vector3 NoEventsHere = Vector3.Zero;
     Vector3 NoEventsHereFar = Vector3.Zero;
-    
+
 
     int BlacklistCooldown = Game.GameTime; //30 secs
 
@@ -113,6 +157,7 @@ public class LivelyWorld : Script
     int CriminalEventProb = 10;
     int AccidentEventProb = 30;
 
+    public static List<Entity> FadeIn = new List<Entity>();
 
 
     public static int CriminalRelGroup = World.AddRelationshipGroup("CriminalRelGroup");
@@ -124,11 +169,12 @@ public class LivelyWorld : Script
     public Vector3 CityCenter = new Vector3(-53, -878, 40);
     public Vector3 BennysMotorworks = new Vector3(-184, -1297, 30);
 
-    public static List<Model> DrugCars = new List<Model> { "blista", "blista2", "moonbeam", "glendale", "dukes", "cavalcade", "rhapsody", "blade", "faction2","retinue", "picador", "emperor","voodoo","regina" };
+    public static List<Model> DrugCars = new List<Model> { "blista", "blista2", "moonbeam", "glendale", "dukes", "cavalcade", "rhapsody", "blade", "faction2", "retinue", "picador", "emperor", "voodoo", "regina" };
 
     public static List<Model> Respraymodels = new List<Model> { "mule", "mule2", "benson", "packer", "hauler", "pounder", "phantom", "roadkiller" };
     public static List<string> BlacklistedAreas = new List<string> { "golf", "armyb", "jail", "airp" };
 
+    public static List<string> NearBeachAreas = new List<string> { "paleto", "delbe", "delpe", "delsol", "vcana", "", "" };
 
     public static List<Replacer> ReplacersList = new List<Replacer>();
     public static List<TrafficSpawner> TrafficSpawnerList = new List<TrafficSpawner>();
@@ -138,8 +184,10 @@ public class LivelyWorld : Script
     public static List<Hunter> Hunters = new List<Hunter>();
     public static List<Entity> TemporalPersistence = new List<Entity>();
 
-    public static List<Vehicle> AllVehicles = new List<Vehicle>();
-    public static List<Vehicle> MonitoredVehicles = new List<Vehicle>();
+
+    public static Vehicle[] AllVehicles;
+    //public static List<Vehicle> AllVehicles = new List<Vehicle>();
+    //public static List<Vehicle> MonitoredVehicles = new List<Vehicle>();
     public static List<Ped> AllPeds = new List<Ped>();
     public static List<Model> MonitoredModels = new List<Model>();
 
@@ -268,7 +316,7 @@ public class LivelyWorld : Script
 
 
 
-        World.SetRelationshipBetweenGroups(Relationship.Hate, Game.GenerateHash("COP"), RacersRLGroup);
+        World.SetRelationshipBetweenGroups(Relationship.Hate, RacersRLGroup, Game.GenerateHash("COP"));
         World.SetRelationshipBetweenGroups(Relationship.Neutral, RacersRLGroup, Game.GenerateHash("PLAYER"));
         NoEventsHereFar = Game.Player.Character.Position;
         NoEventsHere = Game.Player.Character.Position;
@@ -276,38 +324,38 @@ public class LivelyWorld : Script
 
         File.WriteAllText(@"scripts\LivelyWorldDebug.txt", "Script started -" + DateTime.Now + "-GameVer " + Game.Version.ToString());
 
-        if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now +" - Debug output is ON"); else File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Debug output is OFF");
+        if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Debug output is ON"); else File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Debug output is OFF");
 
     }
     public static bool AnyVehicleNear(Vector3 pos, float radius)
     {
-        return Function.Call<bool>(Hash.IS_ANY_VEHICLE_NEAR_POINT, pos.X,pos.Y, pos.Z, radius);
+        return Function.Call<bool>(Hash.IS_ANY_VEHICLE_NEAR_POINT, pos.X, pos.Y, pos.Z, radius);
     }
     void SpawnAnimalTrophy()
     {
-        if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n"+DateTime.Now +" - SpawnAnimalTrophy()");
-        
+        if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - SpawnAnimalTrophy()");
+
         foreach (Vehicle veh in AllVehicles)
         {
-            if (CanWeUse(veh) && !DecorExistsOn("DontInfluence", veh) && !WouldPlayerNoticeChangesHere(veh.Position) && 
-                veh.IsStopped &&veh.IsInRangeOf(Game.Player.Character.Position, 90f) && 
+            if (CanWeUse(veh) && !DecorExistsOn("DontInfluence", veh) && !WouldPlayerNoticeChangesHere(veh.Position) &&
+                veh.IsStopped && veh.IsInRangeOf(Game.Player.Character.Position, 90f) &&
                 !BlacklistedVehicles.Contains(veh) && HuntingTrucks.Contains((VehicleHash)veh.Model.Hash))
             {
                 if ((VehicleHash)veh.Model.Hash == VehicleHash.BobcatXL && veh.IsExtraOn(1)) continue;
 
                 if ((VehicleHash)veh.Model.Hash == VehicleHash.Sadler && (veh.IsExtraOn(6) || veh.IsExtraOn(7))) continue;
-                if ((VehicleHash)veh.Model.Hash == VehicleHash.Sandking2 && veh.GetMod(VehicleMod.Roof)==4) continue;
+                if ((VehicleHash)veh.Model.Hash == VehicleHash.Sandking2 && veh.GetMod(VehicleMod.Roof) == 4) continue;
 
-                 if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", " - Found "+veh.DisplayName);
+                if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", " - Found " + veh.DisplayName);
 
-                if (veh.Speed > 2f) veh.FreezePosition=true;
+                if (veh.Speed > 2f) veh.FreezePosition = true;
                 Function.Call(GTA.Native.Hash._0x0DC7CABAB1E9B67E, veh, true);
                 veh.IsPersistent = true;
                 Vector3 pos = veh.Position + (veh.UpVector * 1) + (veh.ForwardVector * -2);
 
                 if (RandomInt(0, 10) <= 5)
                 {
-                     if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", " - Spawning rabbits");
+                    if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", " - Spawning rabbits");
 
                     for (int i = 0; i < 5; i++)
                     {
@@ -326,7 +374,7 @@ public class LivelyWorld : Script
                 }
                 else
                 {
-                     if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", " - Spawning deer");
+                    if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", " - Spawning deer");
 
                     Ped ped = World.CreatePed(PedHash.Deer, pos, veh.Heading);
                     Function.Call(GTA.Native.Hash._0x0DC7CABAB1E9B67E, ped, true);
@@ -351,30 +399,30 @@ public class LivelyWorld : Script
                         veh.CurrentBlip.IsShortRange = true;
                     }
                 }
-                if (Debug)
+                if (Debug >= DebugLevel.EventsAndScenarios)
                 {
-                    UI.Notify("~b~Spawned trophy on " +veh.FriendlyName);
+                    UI.Notify("~b~Spawned trophy on " + veh.FriendlyName);
                 }
 
 
                 if (!CanWeUse(veh.Driver) && RandomInt(0, 10) <= 5) //
                 {
-                     if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", " - Spawning Hunter nearby");
+                    if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", " - Spawning Hunter nearby");
 
-                    Ped hunter = World.CreatePed(PedHash.Hunter, World.GetSafeCoordForPed(veh.Position.Around(2),false), RandomInt(0, 350));
+                    Ped hunter = World.CreatePed(PedHash.Hunter, World.GetSafeCoordForPed(veh.Position.Around(2), false), RandomInt(0, 350));
                     Function.Call(Hash.TASK_START_SCENARIO_IN_PLACE, hunter, "WORLD_HUMAN_SMOKING", 5000, true);
                     //hunter.IsPersistent = false;
-                    
+
                     TemporalPersistence.Add(hunter);
                 }
                 TemporalPersistence.Add(veh);
 
                 BlacklistedVehicles.Add(veh);
                 Script.Wait(1000);
-                if(veh.FreezePosition) veh.FreezePosition = false;
+                if (veh.FreezePosition) veh.FreezePosition = false;
                 //BlacklistedImportantEvents.Add(EventType.AnimalTrophy);
-                 if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", " - Finished");
-                AnimalTrophyCooldown = Game.GameTime + (1000 * 60 * 10);
+                if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", " - Finished");
+                // AnimalTrophyCooldown = Game.GameTime + (1000 * 60 * 10);
                 break;
             }
         }
@@ -432,7 +480,7 @@ public class LivelyWorld : Script
                     case 1:
                         {
                             Vector3 pos = veh.Position + (veh.ForwardVector * -0.5f) + veh.RightVector * (veh.Model.GetDimensions().X * 0.6f);
-                            ped.Heading = veh.Heading-90;
+                            ped.Heading = veh.Heading - 90;
                             ped.Position = pos;
                             Function.Call(Hash.TASK_START_SCENARIO_IN_PLACE, 0, "WORLD_HUMAN_LEANING", 20000, true);
                             break;
@@ -440,7 +488,7 @@ public class LivelyWorld : Script
                     case 2:
                         {
                             Vector3 pos = veh.Position + (veh.ForwardVector * -0.5f) + veh.RightVector * (veh.Model.GetDimensions().X * 0.7f);
-                            ped.Heading = veh.Heading+90;
+                            ped.Heading = veh.Heading + 90;
                             ped.Position = pos;
                             Function.Call(Hash.TASK_START_SCENARIO_IN_PLACE, 0, "WORLD_HUMAN_MAID_CLEAN", 20000, true);
                             break;
@@ -448,171 +496,20 @@ public class LivelyWorld : Script
                 }
                 Function.Call(Hash.TASK_ENTER_VEHICLE, 0, veh, 20000, -1, 1f, 1, 0);
                 Function.Call(Hash.TASK_PAUSE, 0, RandomInt(2, 4) * 1000);
-                Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, 0, veh, 30f, 1 + 2 + 4 + 8 + 16 + 32);
+                Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, 0, veh, 20f, 1 + 2 + 4 + 8 + 16 + 32 + 128 + 256);
                 seq.Close();
                 ped.Task.PerformSequence(seq);
                 seq.Dispose();
                 ped.BlockPermanentEvents = false;
 
                 //Function.Call(Hash.TASK_START_SCENARIO_AT_POSITION, ped, "WORLD_HUMAN_VEHICLE_MECHANIC", pos.X, pos.Y, pos.Z, heading, 50000, false, false);
-
-                if (DebugBlips && CanWeUse(ped))
-                {
-                    ped.AddBlip();
-                    ped.CurrentBlip.Color = BlipColor.Green;
-                    ped.CurrentBlip.Scale = 0.7f;
-                    ped.CurrentBlip.IsShortRange = true;
-                    ped.CurrentBlip.Name = "Car interaction";
-                }
             }
         }
     }
 
-    int FreightTruckCooldown = Game.GameTime + 5000;
-    void HandleFreightTrucks()
-    {
-       
-        if (DisabledEvents.Contains(EventType.ImprovedFreight)) return;
-        if (IsInNamedArea(Game.Player.Character, "Senora Fwy") || IsInNamedArea(Game.Player.Character, "Great Ocean Hwy"))//
-        {
-            foreach (Vehicle veh in AllVehicles)
-            {
-                if (CanWeUse(veh) && !DecorExistsOn("DontInfluence", veh) && !BlacklistedVehicles.Contains(veh) && !Game.Player.Character.IsInRangeOf(veh.Position, 20f) && !veh.IsPersistent && CanWeUse(veh.Driver) && veh.Speed > 3f && !veh.IsOnScreen && (veh.Model == "juggernaut" || veh.Model == "packer" || veh.Model == "hauler" || veh.Model == "phantom" || veh.Model == "roadkiller"))
-                {
-                    Vehicle trailer = GetTrailer(veh);
 
-                    if (!CanWeUse(trailer) && !Function.Call<bool>(Hash.IS_VEHICLE_ATTACHED_TO_TRAILER, veh))
-                    {
+    static public List<Model> CarrierVehicles = new List<Model> { "sturdy2", "flatbed", "ramptruck", "barracks4", "ramptruck2", "skylift", "wastelander", "mule5" };
 
-                        veh.IsPersistent = true;
-                        Script.Wait(200);
-                        Vector3 pos = veh.Position + (veh.ForwardVector * -10);
-                        TemporalPersistence.Add(veh);
-
-                        trailer = World.CreateVehicle(VehicleHash.FreightTrailer, pos, veh.Heading);
-                        trailer.Speed = veh.Speed;
-                        TemporalPersistence.Add(trailer);
-
-                        if (DebugBlips)
-                        {
-                            if (!veh.CurrentBlip.Exists())
-                            {
-                                veh.AddBlip();
-                                veh.CurrentBlip.Color = BlipColor.White;
-                                veh.CurrentBlip.Sprite = BlipSprite.PersonalVehicleCar;
-                                veh.CurrentBlip.IsShortRange = false;
-                                veh.CurrentBlip.Name = "Freight Truck";
-                            }
-                            if (!veh.CurrentBlip.Exists())
-                            {
-                                trailer.CurrentBlip.Color = BlipColor.White;
-                                trailer.CurrentBlip.Sprite = BlipSprite.PersonalVehicleCar;
-                                trailer.CurrentBlip.IsShortRange = false;
-                                trailer.CurrentBlip.Name = "Freight trailer";
-                            }
-                        }
-
-
-                        if (RandomInt(0, 10) <= 5)
-                        {
-                            Vehicle cargo = World.CreateVehicle(VehicleHash.Annihilator, pos + new Vector3(0, 3, 5), veh.Heading);
-                            TemporalPersistence.Add(cargo);
-                            cargo.ToggleExtra(1, false);
-                            cargo.AttachTo(trailer, 0, (new Vector3(0, 2, -0.4f)), new Vector3(0, 0, 0));
-                            if (Debug) UI.Notify("[FreighTrucks] Freight (annihilator) spawned on a " + veh.FriendlyName + ".");
-
-                        }
-                        else
-                        {
-                            Vehicle cargo = World.CreateVehicle(VehicleHash.Buzzard2, pos + new Vector3(0, 3, 5), veh.Heading);
-                            TemporalPersistence.Add(cargo);
-                            cargo.ToggleExtra(1, false);
-                            cargo.AttachTo(trailer, 0, (new Vector3(0, -5, -0.3f)), new Vector3(0, 0, 0));
-
-                            cargo = World.CreateVehicle(VehicleHash.Buzzard2, pos + new Vector3(0, 3, 5), veh.Heading);
-                            TemporalPersistence.Add(cargo);
-                            cargo.ToggleExtra(1, false);
-                            cargo.AttachTo(trailer, 0, (new Vector3(0, 5, -0.3f)), new Vector3(0, 0, 0));
-                            if (Debug) UI.Notify("[FreighTrucks] Freight (helis) spawned on a " + veh.FriendlyName + ".");
-
-                        }
-
-                        Function.Call(Hash.ATTACH_VEHICLE_TO_TRAILER, veh, trailer, 50);
-                        FreightTruckCooldown = Game.GameTime + (1000 * 60 * RandomInt(2,6));
-                        BlacklistedVehicles.Add(veh);
-                        break;
-                    }
-                }
-                /*
-                if((VehicleHash)veh.Model.Hash == VehicleHash.FreightTrailer)
-                {
-                    foreach (Vehicle v in AllVehicles) if (v.Model.IsHelicopter && v.IsInRangeOf(veh.Position, 50f)) v.AttachTo(veh, 0, (new Vector3(0, 0, -0.4f)), new Vector3(0,0,0));
-                }*/
-            }
-        }
-        else if(Debug) UI.Notify("[FreighTrucks] Player is not in Senora Freeway, on the desert area.");
-    }
-
-
-   static public List<Model> CarrierVehicles = new List<Model> {"sturdy2", "flatbed", "ramptruck", "barracks4", "ramptruck2", "skylift", "wastelander","mule5" };
-    int HandleFlabedsCooldown = Game.GameTime + 5000;
-    void HandleFlabeds()
-    {
-        if (DisabledEvents.Contains(EventType.ImprovedFlatbeds)) return;
-
-        if (HandleFlabedsCooldown<Game.GameTime)//
-        {
-            if (Debug) UI.Notify("Checking to improve carriers...");
-            foreach (Vehicle veh in AllVehicles)
-            {
-                if (CanWeUse(veh) && !DecorExistsOn("DontInfluence", veh) && !CanWeUse(GetAttachedVehicle(veh, false)) && !veh.IsPersistent && !BlacklistedVehicles.Contains(veh) && !veh.IsOnScreen && (CarrierVehicles.Contains(veh.Model) && !LastDriverIsPed(veh,Game.Player.Character)) && !Game.Player.Character.IsInRangeOf(veh.Position, 20f))
-                {
-                    if (Debug) UI.Notify("Got carrier, "+veh.FriendlyName);
-
-                    string vehicle = RandomNormalVehicle();
-
-                    veh.IsPersistent = true;
-                    Vehicle cargo = World.CreateVehicle(vehicle, veh.Position + (veh.ForwardVector * -5f));
-
-                    if (CanWeUse(cargo))
-                    {
-                        cargo.PlaceOnGround();
-                        //cargo.Speed = veh.Speed;
-
-                        //veh.Speed = veh.Speed / 2f; //veh.FreezePosition = true;
-                        HandleFlabedsCooldown = Game.GameTime + (1000 * RandomInt(2, 6));
-
-
-                        // cargo.IsPersistent = false;
-                        Attach(veh, cargo);
-
-                        if (!veh.CurrentBlip.Exists() && DebugBlips)
-                        {
-                            veh.AddBlip();
-                            veh.CurrentBlip.Color = BlipColor.White;
-                            veh.CurrentBlip.Name = "Carrier";
-                            veh.CurrentBlip.IsShortRange = true;
-                        }
-                       // veh.FreezePosition = false;
-                        if (Debug) UI.Notify("[Carriers] Attached " + cargo.FriendlyName + " on " + veh.FriendlyName + ".");
-
-
-                        TemporalPersistence.Add(cargo);
-                        TemporalPersistence.Add(veh);
-                        BlacklistedVehicles.Add(veh);
-                    }
-
-                    break;
-                }
-                /*
-                if((VehicleHash)veh.Model.Hash == VehicleHash.FreightTrailer)
-                {
-                    foreach (Vehicle v in AllVehicles) if (v.Model.IsHelicopter && v.IsInRangeOf(veh.Position, 50f)) v.AttachTo(veh, 0, (new Vector3(0, 0, -0.4f)), new Vector3(0,0,0));
-                }*/
-            }
-        }
-        else if (Debug) UI.Notify("[FlatBeds] On cooldown.");
-    }
     void SmartAttach(Vehicle carrier, Vehicle veh)
     {
         Vector3 relativePos = new Vector3(0, -2, 0.7f + (veh.Model.GetDimensions().Z / 5)); //
@@ -637,11 +534,153 @@ public class LivelyWorld : Script
         return ent.Position + (ent.ForwardVector * ahead) + (ent.RightVector * right);
     }
 
+    enum PlayerContext
+    {
+        IdleFoot, IdleDriving, BusyDrivingNormal, BusyDrivingFast, BusyCombat, VeryBusy
+    }
+
+    PlayerContext CurrentPlayerContext = PlayerContext.IdleFoot;
+
+    public void RebuildPools()
+    {
+
+
+        CurrentlyAllowedEvents.Clear();
+        CurrentlyAllowedScenarios.Clear();
+        Vehicle PlayerCar = Game.Player.LastVehicle;
+
+
+        //Context
+        if (Function.Call<bool>(Hash.IS_PED_USING_ACTION_MODE, Game.Player.Character))
+        {
+            CurrentPlayerContext = PlayerContext.BusyCombat;
+
+        }
+
+        if (CanWeUse(PlayerCar))
+        {
+            if (Game.Player.Character.IsInVehicle(PlayerCar))
+            {
+                if (PlayerCar.Speed > 20)
+                {
+                    if (PlayerCar.Speed > 40)
+                    {
+                        CurrentPlayerContext = PlayerContext.BusyDrivingFast;
+                    }
+                    else
+                    {
+                        CurrentPlayerContext = PlayerContext.BusyDrivingNormal;
+                    }
+                }
+                else
+                {
+                    CurrentPlayerContext = PlayerContext.IdleDriving;
+
+                }
+            }
+            else CurrentPlayerContext = PlayerContext.IdleFoot;
+
+        }
+        else if (Game.Player.Character.IsOnFoot)
+        {
+            CurrentPlayerContext = PlayerContext.IdleFoot;
+        }
+
+
+        //Advanced Context
+        switch (CurrentPlayerContext)
+        {
+            case PlayerContext.VeryBusy:
+                {
+                    //  Nothing
+                    break;
+                }
+            case PlayerContext.BusyCombat:
+                {
+                    CurrentlyAllowedEvents.Add(EventType.EmergencyRushing);
+
+                    break;
+                }
+            case PlayerContext.BusyDrivingFast:
+                {
+                    CurrentlyAllowedEvents.Add(EventType.EmergencyRushing);
+
+                    break;
+                }
+            case PlayerContext.BusyDrivingNormal:
+                {
+                    CurrentlyAllowedScenarios.Add(ScenarioType.ImprovedFreight);
+                    CurrentlyAllowedScenarios.Add(ScenarioType.ImprovedFlatbeds);
+                    CurrentlyAllowedScenarios.Add(ScenarioType.ImprovedTowtrucks);
+                    CurrentlyAllowedScenarios.Add(ScenarioType.AnimalTrophies);
+
+                    CurrentlyAllowedScenarios.Add(ScenarioType.DriverOvertake);
+
+                    CurrentlyAllowedEvents.AddRange(new List<EventType> { EventType.Racer, EventType.Deal, EventType.EmergencyRushing });
+
+                    break;
+                }
+            case PlayerContext.IdleDriving:
+                {
+
+                    CurrentlyAllowedEvents.AddRange(new List<EventType> { EventType.Racer, EventType.Deal, EventType.EmergencyRushing, EventType.Hunter, EventType.GangDriveby, });
+                    foreach (ScenarioType d in Enum.GetValues(typeof(ScenarioType)).Cast<ScenarioType>())
+                    {
+                        CurrentlyAllowedScenarios.Add(d);
+                    }
+
+                    break;
+                }
+            case PlayerContext.IdleFoot:
+                {
+
+                    foreach (ScenarioType d in Enum.GetValues(typeof(ScenarioType)).Cast<ScenarioType>())
+                    {
+                        CurrentlyAllowedScenarios.Add(d);
+                    }
+                    foreach (EventType d in Enum.GetValues(typeof(EventType)).Cast<EventType>())
+                    {
+                        CurrentlyAllowedEvents.Add(d);
+                    }
+                    break;
+                }
+        }
+
+
+        foreach (ScenarioType d in DisabledScenarios) if (CurrentlyAllowedScenarios.Contains(d)) CurrentlyAllowedScenarios.Remove(d);
+        foreach (EventType d in DisabledEvents) if (DisabledEvents.Contains(d)) CurrentlyAllowedEvents.Remove(d);
+
+        //Fixes
+        if (CurrentlyAllowedEvents.Contains(EventType.Hunter))
+        {
+            if (new List<string> { "CANNY", "MTJOSE", "DESRT", "CMSW", "ZANCUDO", "LAGO", "GREATC", "PALHIGH", "CCREAK", "MTCHIL" }.Contains(World.GetZoneNameLabel(Game.Player.Character.Position)) == false)
+            {
+                CurrentlyAllowedEvents.Remove(EventType.Hunter);
+            }
+        }
+        if (CurrentlyAllowedScenarios.Contains(ScenarioType.AnimalTrophies))
+        {
+            if (new List<string> { "ALAMO", "PALETO", "SANDY" }.Contains(World.GetZoneNameLabel(Game.Player.Character.Position)) == false)
+            {
+                CurrentlyAllowedScenarios.Remove(ScenarioType.AnimalTrophies);
+            }
+        }
+        if (CurrentlyAllowedEvents.Contains(EventType.GangDriveby))
+        {
+            if (!GangAreas.Contains(World.GetZoneNameLabel(Game.Player.Character.Position)))
+            {
+                CurrentlyAllowedEvents.Remove(EventType.GangDriveby);
+            }
+        }
+
+        AddScenarioProbMultipliers();
+
+    }
     public static void TemporalPullover(Ped p)
     {
         Vehicle veh = p.CurrentVehicle;
 
-        if(RandomInt(0, 10) > 5)
+        if (RandomInt(0, 10) > 5)
         {
             veh.EngineHealth = 1;
         }
@@ -656,7 +695,7 @@ public class LivelyWorld : Script
         Vector3 park = World.GetNextPositionOnSidewalk(GetEntityOffset(veh, 50, 0)) + (veh.RightVector * 4);
         float speed = veh.Speed;
         TaskSequence seq = new TaskSequence();
-        Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE, 0, veh, pos.X, pos.Y, pos.Z, speed/2, 1+2+4+8+16, 5f);
+        Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE, 0, veh, pos.X, pos.Y, pos.Z, speed / 2, 1 + 2 + 4 + 8 + 16, 5f);
         Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE, 0, veh, park.X, park.Y, park.Z, 5f, 1 + 2 + 4 + 8 + 16 + 4456509, 3f);
         Function.Call(Hash.TASK_PAUSE, 0, RandomInt(3, 7) * 1000);
         Function.Call(Hash.TASK_LEAVE_VEHICLE, 0, veh, 262144);
@@ -684,8 +723,8 @@ public class LivelyWorld : Script
     {
         if (CanWeUse(v))
         {
-            File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Rendering "+v.FriendlyName+" as wrecked");
-            if (MatteColor.Count==0)
+            File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Rendering " + v.FriendlyName + " as wrecked");
+            if (MatteColor.Count == 0)
             {
                 foreach (VehicleColor color in Enum.GetValues(typeof(VehicleColor)))
                 {
@@ -695,7 +734,7 @@ public class LivelyWorld : Script
 
             if (MatteColor.Count > 0)
             {
-                VehicleColor color= MatteColor[RandomInt(0, MatteColor.Count - 1)];
+                VehicleColor color = MatteColor[RandomInt(0, MatteColor.Count - 1)];
                 v.PrimaryColor = color;
                 v.SecondaryColor = color;
             }
@@ -710,8 +749,8 @@ public class LivelyWorld : Script
             v.EngineCanDegrade = true;
             v.EngineHealth = 500;
             v.EngineRunning = false;
-            
-            v.ApplyDamage(v.Position+Vector3.WorldDown, 20f, 10);
+
+            v.ApplyDamage(v.Position + Vector3.WorldDown, 20f, 10);
             Function.Call(Hash.SET_ENTITY_RENDER_SCORCHED, v, true);
             //Function.Call(Hash.SET_VEHICLE_DOOR_BROKEN, v, 4, true);
 
@@ -723,7 +762,7 @@ public class LivelyWorld : Script
             if (RandomInt(0, 10) >= 5) Function.Call(Hash.SET_VEHICLE_TYRE_BURST, v, tire, true, 1000);
             else Function.Call(Hash.SET_VEHICLE_TYRE_BURST, v, tire, false, 300);
 
-            SetDecorBool("DontInfluence", v , true);
+            SetDecorBool("DontInfluence", v, true);
         }
     }
 
@@ -738,8 +777,59 @@ public class LivelyWorld : Script
 
         return false;
     }
+
+    int ForcedScenario = -1;
+
+
+    Vehicle AttachBikeToCar(Vehicle v, Model cycleModel)
+    {
+        if (CanWeUse(v))
+        {
+            Vehicle cycle = World.CreateVehicle(cycleModel, v.Position.Around(3));
+            cycle.Alpha = 50;
+            FadeIn.Add(cycle);
+            //while (cycle.Alpha < 255) cycle.Alpha++;
+            //  Function.Call(Hash.NETWORK_FADE_IN_ENTITY, cycle, false, false);
+            v.Alpha = 0;
+            FadeIn.Add(v);
+
+            if (CanWeUse(cycle))
+            {
+                cycle.AttachTo(v, 0, new Vector3(0, -(v.Model.GetDimensions().Y / 2.1f), 0.3f), new Vector3(0, 20, 90));
+
+            }
+            return cycle;
+        }
+        return null;
+    }
     void ProcessCheats()
     {
+
+        if (WasCheatStringJustEntered("getzone")) UI.Notify(World.GetZoneNameLabel(Game.Player.Character.Position));
+        if (WasCheatStringJustEntered("cycleoncop"))
+        {
+            Vehicle v = Game.Player.Character.CurrentVehicle;
+            Vehicle cycleCar = AttachBikeToCar(v, "cycle");
+            if (CanWeUse(cycleCar)) cycleCar.IsPersistent = false;
+        }
+
+        if (WasCheatStringJustEntered("rambar"))
+        {
+            Vehicle v = Game.Player.Character.CurrentVehicle;
+
+            if (CanWeUse(v))
+            {
+                Prop bar = World.CreateProp("imp_prop_impexp_front_bars_01b", v.Position.Around(3), true, true);
+                bar.AttachTo(v, 0, new Vector3(bar.Model.GetDimensions().X / 4, (v.Model.GetDimensions().Y / 2.3f), -0.2f), new Vector3(0, 0, 0));
+                //cycle.PrimaryColor = VehicleColor.MatteBlack;
+                bar.IsPersistent = false;
+            }
+        }
+        if (WasCheatStringJustEntered("strip"))
+        {
+            UI.Notify("Stripping " + Game.Player.Character.LastVehicle.FriendlyName);
+            StripOfAllPossible(Game.Player.Character.LastVehicle, true, true, true, true, false, true);
+        }
         if (WasCheatStringJustEntered("generator"))
         {
 
@@ -751,29 +841,69 @@ public class LivelyWorld : Script
             else
             {
                 string car = Game.GetUserInput(30);
-                int ped = Game.GenerateHash("player_zero");
                 Vector3 coords = Game.Player.Character.Position;
-                Generator = Function.Call<int>(Hash.CREATE_SCRIPT_VEHICLE_GENERATOR, coords.X, coords.Y, coords.Z, Game.Player.Character.Heading, 5.0f, 3.0f, Game.GenerateHash(car), ped, ped, ped, ped, ped, true, false, false, false, true, -1);
+                Generator = Function.Call<int>(Hash.CREATE_SCRIPT_VEHICLE_GENERATOR, coords.X, coords.Y, coords.Z, Game.Player.Character.Heading, 5.0f, 3.0f, Game.GenerateHash(car), -1, -1, -1, -1, true, true, true, true, true, -1);
                 UI.Notify("Created generator");
             }
         }
 
+        if (WasCheatStringJustEntered("override"))
+        {
 
+            Vector3 pos = Game.Player.Character.Position;
+            int zoneid = Function.Call<int>(Hash.GET_ZONE_AT_COORDS, pos.X, pos.Y, pos.Z);
+            string CarHash = Game.GetUserInput(20);
 
-            if (WasCheatStringJustEntered("pullover"))
+            Model carmodel = CarHash;
+
+            Function.Call<int>(Hash.OVERRIDE_POPSCHEDULE_VEHICLE_MODEL, Function.Call<int>(Hash.GET_ZONE_POPSCHEDULE, zoneid), Game.GenerateHash(CarHash));
+            carmodel.Request();
+
+            //UI.Notify("Done.");
+        }
+
+        if (WasCheatStringJustEntered("pullover"))
         {
             Ped p = null;
             foreach (Ped ped in World.GetNearbyPeds(Game.Player.Character.Position + Game.Player.Character.ForwardVector * 20f, 10f)) if (!ped.IsOnFoot) { p = ped; break; }
 
-           if(CanWeUse(p)) TemporalPullover(p);
+            if (CanWeUse(p)) TemporalPullover(p);
         }
 
-        if(Duel) HandleDuel();
+        if (Duel) HandleDuel();
         if (WasCheatStringJustEntered("lwduel"))
         {
             Duel = true;
         }
-        
+        if (WasCheatStringJustEntered("lwscenario"))
+        {
+            string input = Game.GetUserInput(30);
+
+            foreach (ScenarioType d in Enum.GetValues(typeof(ScenarioType)).Cast<ScenarioType>())
+            {
+                if (d.ToString().ToLowerInvariant() == input.ToLowerInvariant())
+                {
+                    ForcedScenario = (int)d;
+                    break;
+                }
+            }
+
+        }
+
+        if (WasCheatStringJustEntered("lwevent"))
+        {
+            string input = Game.GetUserInput(30);
+
+            foreach (EventType d in Enum.GetValues(typeof(EventType)).Cast<EventType>())
+            {
+                if (d.ToString().ToLowerInvariant() == input.ToLowerInvariant())
+                {
+                    ForcedEvent = (int)d;
+                    break;
+                }
+            }
+
+        }
         if (WasCheatStringJustEntered("lwracers"))
         {
             if (Racers.Count == 0) CreateRacers(); else UI.Notify("racers still exist");
@@ -787,7 +917,7 @@ public class LivelyWorld : Script
         HandleWereCar();
         if (WasCheatStringJustEntered("lwbarn"))
         {
-          //  UI.Notify("barnin'");
+            //  UI.Notify("barnin'");
 
             Vehicle v = Game.Player.Character.CurrentVehicle;
             if (!CanWeUse(v)) v = Game.Player.Character.LastVehicle;
@@ -838,54 +968,54 @@ public class LivelyWorld : Script
          {
              if (!Game.Player.Character.IsInRangeOf(r.GetVertexCoord(1), 200f)) { r.Delete(); break; }
          }*/
-         
-        if (1!=1)
+
+        if (1 != 1)
         {
             Vehicle v = Game.Player.Character.CurrentVehicle;
 
-            if (CanWeUse(v) &&Math.Abs(Function.Call<Vector3>(Hash.GET_ENTITY_SPEED_VECTOR, v, true).X) > 3f)
+            if (CanWeUse(v) && Math.Abs(Function.Call<Vector3>(Hash.GET_ENTITY_SPEED_VECTOR, v, true).X) > 3f)
             {
 
 
-    /*
-    TASK_LEAVE_VEHICLE(Ped ped, Vehicle vehicle, int flags) // D3DBCE61A490BE02 7B1141C6
-Flags from decompiled scripts:
-0 = normal exit and closes door.
-1 = normal exit and closes door.
-16 = teleports outside, door kept closed.
-64 = normal exit and closes door, maybe a bit slower animation than 0.
-256 = normal exit but does not close the door.
-4160 = ped is throwing himself out, even when the vehicle is still.
-262144 = ped moves to passenger seat first, then exits normally
-    */
-    /*
-    v.OpenDoor(VehicleDoor.FrontRightDoor, true, false);
-                Script.Wait(300);
-                Ped p = v.GetPedOnSeat(VehicleSeat.RightFront);
-                //if (CanWeUse(p)) p.Kill();
-
-                Function.Call(Hash.TASK_LEAVE_VEHICLE, p, v, 4160);
-
-                //p.Position = v.Position+v.RightVector;
-                Script.Wait(500);
-                Function.Call(Hash.SET_PED_TO_RAGDOLL, p, 2000, 2000, 3, true, true, false);
-                Function.Call(Hash.CREATE_NM_MESSAGE, 1151);
-                Function.Call(Hash.GIVE_PED_NM_MESSAGE, p, true);
-                UI.Notify("ragdolled");
+                /*
+                TASK_LEAVE_VEHICLE(Ped ped, Vehicle vehicle, int flags) // D3DBCE61A490BE02 7B1141C6
+            Flags from decompiled scripts:
+            0 = normal exit and closes door.
+            1 = normal exit and closes door.
+            16 = teleports outside, door kept closed.
+            64 = normal exit and closes door, maybe a bit slower animation than 0.
+            256 = normal exit but does not close the door.
+            4160 = ped is throwing himself out, even when the vehicle is still.
+            262144 = ped moves to passenger seat first, then exits normally
                 */
+                /*
+                v.OpenDoor(VehicleDoor.FrontRightDoor, true, false);
+                            Script.Wait(300);
+                            Ped p = v.GetPedOnSeat(VehicleSeat.RightFront);
+                            //if (CanWeUse(p)) p.Kill();
+
+                            Function.Call(Hash.TASK_LEAVE_VEHICLE, p, v, 4160);
+
+                            //p.Position = v.Position+v.RightVector;
+                            Script.Wait(500);
+                            Function.Call(Hash.SET_PED_TO_RAGDOLL, p, 2000, 2000, 3, true, true, false);
+                            Function.Call(Hash.CREATE_NM_MESSAGE, 1151);
+                            Function.Call(Hash.GIVE_PED_NM_MESSAGE, p, true);
+                            UI.Notify("ragdolled");
+                            */
             }
         }
-        
+
         if (WasCheatStringJustEntered("car"))
         {
-            UI.Notify("Current car "+Game.Player.Character.CurrentVehicle.DisplayName);
+            UI.Notify("Current car " + Game.Player.Character.CurrentVehicle.DisplayName);
         }
-            if (WasCheatStringJustEntered("lwpos"))
+        if (WasCheatStringJustEntered("lwpos"))
         {
             Vector3 pos = Game.Player.Character.Position;
             string t = "";
             t = t + "Vector3 (" + pos.X + "," + pos.Y + "," + pos.Z + ");";
-            File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n"+ t);
+            File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + t);
 
             UI.Notify(t);
 
@@ -899,7 +1029,7 @@ Flags from decompiled scripts:
         if (WasCheatStringJustEntered("lwtraffictest"))
         {
             UI.Notify("~b~Calling for all injected vehicles:");
-            foreach(TrafficSpawner t in TrafficSpawnerList)
+            foreach (TrafficSpawner t in TrafficSpawnerList)
             {
                 t.Cooldown = Game.GameTime + (RandomInt(1, 10) * 1000);
                 //UI.Notify(t.SourceVehicle.ToString());
@@ -920,7 +1050,7 @@ Flags from decompiled scripts:
             {
                 foreach (Vehicle v in World.GetNearbyVehicles(veh.Position, 5f))
                 {
-                    if(v.Handle != veh.Handle)
+                    if (v.Handle != veh.Handle)
                     {
                         if (v.IsAttachedTo(veh))
                         {
@@ -940,19 +1070,14 @@ Flags from decompiled scripts:
 
                             Vector3 hook = Function.Call<Vector3>(Hash.GET_OFFSET_FROM_ENTITY_GIVEN_WORLD_COORDS, veh, v.Position.X, v.Position.Y, v.Position.Z);
                             //relativePos = new Vector3(relativePos.X, -relativePos.Y, -relativePos.Z);
-                            v.AttachTo(veh, 0, hook,new Vector3(0,0,0));
+                            v.AttachTo(veh, 0, hook, new Vector3(0, 0, 0));
                         }
                     }
                 }
             }
 
         }
-        if (WasCheatStringJustEntered("lwfreight"))
-        {
-            UI.Notify("Called for a Freight event.");
-            HandleFreightTrucks();
 
-        }
         if (WasCheatStringJustEntered("lwdebugoutput"))
         {
             DebugOutput = !DebugOutput;
@@ -1020,7 +1145,12 @@ Flags from decompiled scripts:
             UI.Notify("Called for a Firetruck event.");
             SpawnEmergencyVehicle(EmergencyType.FIRETRUCK);
         }
-        if (WasCheatStringJustEntered("lwdebug")) { Debug = !Debug; UI.Notify("~b~Debug set to " + Debug.ToString()); }
+        if (WasCheatStringJustEntered("lwdebug"))
+        {
+            Debug++;
+            if (Debug > DebugLevel.Everything) Debug = DebugLevel.None;
+            UI.Notify("~b~Debug set to " + Debug.ToString());
+        }
         if (WasCheatStringJustEntered("lwblips")) { DebugBlips = !DebugBlips; UI.Notify("~b~DebugBlips set to " + DebugBlips.ToString()); }
 
         if (WasCheatStringJustEntered("lwtaxi"))
@@ -1157,28 +1287,28 @@ Flags from decompiled scripts:
         if (BlacklistedVehicles.Count > 50)
         {
             BlacklistedVehicles.RemoveRange(0, 5);
-            if (Debug) UI.Notify("~b~ BlacklistedVehicles list pruned.");
+            if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~b~ BlacklistedVehicles list pruned.");
         }
 
-        
+
         if (WrecksChecker < Game.GameTime)
         {
-            if (DisabledEvents.Contains(EventType.BarnFinds)) return;
+            if (!CurrentlyAllowedScenarios.Contains(ScenarioType.BarnFinds)) return;
             if (Game.Player.Character.IsInRangeOf(LastWreck, 100f)) return;
             //UI.Notify("Wrecker started");
             File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Checking for wrecks");
             int i = 0;
-            foreach(Prop p in World.GetAllProps())
+            foreach (Prop p in World.GetAllProps())
             {
                 if (Game.Player.Character.IsInRangeOf(p.Position, 50f)) continue;
-                
+
                 //(!Function.Call<bool>(Hash.WOULD_ENTITY_BE_OCCLUDED, Game.GenerateHash("blista"), pos.X, pos.Y, pos.Z, true)) 
-                if (Function.Call<bool>(Hash.IS_ENTITY_OCCLUDED, p) && WreckModels.Contains(p.Model) && BarnCars.Count<10)
+                if (Function.Call<bool>(Hash.IS_ENTITY_OCCLUDED, p) && WreckModels.Contains(p.Model) && BarnCars.Count < 10)
                 {
                     int max = 0;
-                    foreach(Vehicle v in BarnCars)
+                    foreach (Vehicle v in BarnCars)
                     {
-                        if(v.IsInRangeOf(p.Position, 10f))
+                        if (v.IsInRangeOf(p.Position, 10f))
                         {
                             max++;
                             if (max >= 2)
@@ -1187,7 +1317,7 @@ Flags from decompiled scripts:
                             }
                         }
                     }
-                    if(RandomInt(0, i) < 2  && max <2 )
+                    if (RandomInt(0, i) < 2 && max < 2)
                     {
                         Vector3 pos = p.Position + Vector3.WorldUp;
                         float h = p.Heading;
@@ -1195,13 +1325,13 @@ Flags from decompiled scripts:
 
                         Vehicle v = World.CreateVehicle(WreckCarModels[RandomInt(0, WreckCarModels.Count - 1)], pos, h);
 
-                        
+
                         v.AddBlip();
                         v.CurrentBlip.Sprite = BlipSprite.Dart;
-                       // v.CurrentBlip.Scale = 0.5f;
+                        // v.CurrentBlip.Scale = 0.5f;
                         v.CurrentBlip.IsShortRange = true;
-                        
-                        if(v.ClassType== VehicleClass.Muscle || v.ClassType== VehicleClass.SportsClassics || v.ClassType == VehicleClass.Sports)
+
+                        if (v.ClassType == VehicleClass.Muscle || v.ClassType == VehicleClass.SportsClassics || v.ClassType == VehicleClass.Sports)
                         {
                             if (RandomInt(0, 10) < 4) v.SetMod(VehicleMod.Engine, 2, false);
 
@@ -1220,7 +1350,7 @@ Flags from decompiled scripts:
                     }
                 }
             }
-            if(i>1)
+            if (i > 1)
             {
                 //Function.Call(Hash.FLASH_MINIMAP_DISPLAY);
                 if (Game.Player.Character.Velocity.Length() > 10f) WrecksChecker = Game.GameTime + 10000;
@@ -1232,12 +1362,12 @@ Flags from decompiled scripts:
                 else WrecksChecker = Game.GameTime + 50000;
             }
 
-           // UI.Notify("Wrecker finished");
+            // UI.Notify("Wrecker finished");
         }
         //Blacklisted events cooldown
         if (BlacklistedEvents.Count > 0)
         {
-            if (Debug)
+            if (Debug >= DebugLevel.Everything)
             {
                 string text = "";
                 foreach (EventType ev in BlacklistedEvents) text = text + " | " + ev.ToString();
@@ -1250,7 +1380,7 @@ Flags from decompiled scripts:
                 {
                     BlackistedEventsTime = BlackistedEventsTime = Game.GameTime + 40000;
                     BlacklistedEvents.RemoveAt(0);
-                    if (Debug) UI.Notify("~b~Blacklisted events cleared");
+                    if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~b~Blacklisted events cleared");
                 }
             }
         }
@@ -1259,7 +1389,7 @@ Flags from decompiled scripts:
         /*
         if (BlacklistedImportantEvents.Count > 1)
         {
-            if (Debug)
+            if (Debug >= DebugLevel.EventsAndScenarios)
             {
                 string text = "";
                 foreach (EventType ev in BlacklistedImportantEvents) text = text + " | " + ev.ToString();
@@ -1272,7 +1402,7 @@ Flags from decompiled scripts:
                 {
                     BlackistedImportantEventsTime = BlackistedImportantEventsTime = Game.GameTime + (60000 * BlackistedImportantEventsCooldown); //change to 5 in release
                     BlacklistedImportantEvents.RemoveAt(0);
-                    if (Debug) UI.Notify("~b~Blacklisted Important events cleared");
+                    if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~b~Blacklisted Important events cleared");
                 }
             }
         }*/
@@ -1282,11 +1412,11 @@ Flags from decompiled scripts:
         if (VehMonitorTime < Game.GameTime)
         {
             VehMonitorTime = Game.GameTime + 5000;
-            MonitoredVehicles.Clear();
-            AllVehicles.Clear();
 
             string names = "";
 
+
+            /*
             foreach (Vehicle v in World.GetAllVehicles())
             {
                 AllVehicles.Add(v);
@@ -1305,10 +1435,11 @@ Flags from decompiled scripts:
                 if (TruckRespray && Respraymodels.Contains(v.Model)&& !v.IsPersistent && !BlacklistedVehicles.Contains(v) && !Game.Player.Character.IsInRangeOf(v.Position, 40f)) { ResprayTruck(v); BlacklistedVehicles.Add(v); }
             }
 
+            */
             if (BlacklistedModels.Count > 5)
             {
                 BlacklistedModels.RemoveAt(0);
-                if (Debug) UI.Notify("~y~Blacklist cleaned");
+                if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~y~Blacklist cleaned");
             }
 
             AllPeds.Clear();
@@ -1319,28 +1450,317 @@ Flags from decompiled scripts:
                     AllPeds.Add(p);
                 }
             }
-
-            if (Debug) UI.Notify(MonitoredVehicles.Count + " specific cars being monitored of " + AllVehicles.Count + ". ~n~(" + names + ")");
-
         }
 
     }
+    Camera CoolCarCam = null;
+    bool PhotoDone = false;
+    float camHeight = 0f;
 
+    Prop Phone = null;
+    Vehicle coolcar = null;
+
+    int BarnFindTutorial = 0;
     void ProcessCurrentEvents()
     {
+
+
+        if (CanWeUse(Overtaker))
+        {
+            if (CanWeUse(Overtaken))
+            {
+
+                if (GetOffset(Overtaken, Overtaker).X > 0)
+                {
+                    Function.Call(Hash.SET_VEHICLE_INDICATOR_LIGHTS, Overtaker.CurrentVehicle, 0, true);
+                    Function.Call(Hash.SET_VEHICLE_INDICATOR_LIGHTS, Overtaker.CurrentVehicle, 1, false);
+                }
+                else
+                {
+                    Function.Call(Hash.SET_VEHICLE_INDICATOR_LIGHTS, Overtaker.CurrentVehicle, 1, true);
+                    Function.Call(Hash.SET_VEHICLE_INDICATOR_LIGHTS, Overtaker.CurrentVehicle, 0, false);
+                }
+
+            }
+            if (!CanWeUse(Overtaken) || IsPosAheadEntity(Overtaken, Overtaker.Position) > 10f || !Overtaken.IsInRangeOf(Overtaker.Position, 50f))
+            {
+
+
+                Function.Call(Hash.SET_VEHICLE_INDICATOR_LIGHTS, Overtaker.CurrentVehicle, 1, false);
+                Function.Call(Hash.SET_VEHICLE_INDICATOR_LIGHTS, Overtaker.CurrentVehicle, 0, false);
+
+                Overtaker.Task.ClearAll();
+                UI.Notify(Overtaker.CurrentVehicle.FriendlyName + " overtake finished");
+                Overtaker.IsPersistent = false;
+                Overtaker.DrivingStyle = DrivingStyle.Normal;
+                Overtaker = null;
+                if (CanWeUse(Overtaken) && Overtaken.IsPersistent) Overtaken.IsPersistent = false;
+                Overtaken = null;
+            }
+
+        }
+        if (CurrentlyAllowedScenarios.Contains(ScenarioType.PlayerCoolCarPhoto) && CanWeUse(CoolCarPed))
+        {
+            World.DrawMarker(MarkerType.ChevronUpx1, CoolCarPed.Position + (CoolCarPed.UpVector * 2), Vector3.Zero, -Vector3.WorldDown, new Vector3(1f, 1f, -1f), Color.SkyBlue);
+            Vehicle v = Game.Player.Character.LastVehicle;
+            if (!PhotoDone && CanWeUse(v))
+            {
+                if (CoolCarCam == null)
+                {
+                    foreach (Prop p in World.GetNearbyProps(CoolCarPed.GetBoneCoord(Bone.SKEL_Head), 1f))
+                        if (CanWeUse(p) && p.IsAttachedTo(CoolCarPed))
+                        {
+                            //  p.IsVisible = false;
+                            CoolCarCam = World.CreateCamera(Game.Player.Character.Position + Vector3.WorldUp, Vector3.Zero, GameplayCamera.FieldOfView);
+
+
+                            if (!CoolCarPed.IsInRangeOf(v.Position, 10f)) CoolCarCam.FieldOfView -= 20;
+                            Function.Call(Hash.ATTACH_CAM_TO_ENTITY, CoolCarCam, p, 0f, -0.01f, 0.1f, true);
+                            CoolCarCam.Rotation = p.Rotation;
+                            if (CanWeUse(coolcar))
+                            {
+                                CoolCarCam.PointAt(coolcar);
+                            }
+                            else
+                            {
+                                // CoolCarCam.AttachTo(p, Vector3.Zero);
+                                CoolCarCam.PointAt(p, new Vector3(0, -0.2f, 0.1f));
+                                p.IsVisible = false;
+                            }
+
+
+                            Phone = p;
+                            break;
+                        }
+                }
+                else
+                {
+                    if (IsNightTime() && CanWeUse(Phone)) World.DrawSpotLightWithShadow(CoolCarCam.Position, Phone.ForwardVector, Color.White, 5f, 0.8f, 10f, 30f, 10f);// 100f, 1f, 1f, 10f, 90f
+                    if (CoolCarCam.Position.Z < camHeight && camHeight > CoolCarPed.GetBoneCoord(Bone.SKEL_Head).Z)
+                    {
+                        Function.Call(Hash.HIDE_HUD_AND_RADAR_THIS_FRAME);
+                        Function.Call(Hash.HIDE_HELP_TEXT_THIS_FRAME);
+                        for (int i = 0; i < 200; i++)
+                        {
+                            if (Function.Call<bool>(Hash.IS_HUD_COMPONENT_ACTIVE, i)) Function.Call(Hash.HIDE_HUD_COMPONENT_THIS_FRAME, i);
+                        }
+
+                        World.RenderingCamera = CoolCarCam;
+
+                        SendKeys.SendWait("{F12}");
+                        while (World.RenderingCamera != CoolCarCam) Script.Yield();
+                        //Game.Pause(true);
+                        //  Script.Wait(1000);
+                        //Game.Pause(false);
+
+                        World.RenderingCamera = null;
+                        PhotoDone = true;
+                        camHeight = 0f;
+                        return;
+                    }
+                    else
+                    {
+                        camHeight = CoolCarCam.Position.Z;
+                    }
+                }
+            }
+
+            if (!Function.Call<bool>(Hash.GET_IS_TASK_ACTIVE, CoolCarPed, 89))
+            {
+
+                int score = 0;
+                string stringScore = "~g~";
+                if (!v.PearlescentColor.ToString().Contains("black"))
+                {
+                    stringScore += "+Pearlescent";
+                    score += 10;
+                }
+                if (Math.Abs(v.SteeringAngle) > 5)
+                {
+                    stringScore += "~n~Turned Wheels";
+                    score += 5;
+                }
+
+                if (v.Livery > -1 || v.GetMod(VehicleMod.Livery) != -1)
+                {
+                    stringScore += "+Livery";
+                    score += 20;
+                }
+                UI.Notify(stringScore);
+                string message = "";
+
+                if (v.FriendlyName != "")
+                {
+                    message = "Check out this cool ~b~" + v.FriendlyName + "~w~ I found on ~y~" + World.GetStreetName(v.Position) + "~w~ today!";
+                }
+                else
+                {
+                    message = "Check out this cool car I found on ~y~" + World.GetStreetName(v.Position) + "~w~ today!";
+                }
+                string sex = "GuyOfLS";
+                if (CoolCarPed.Gender == Gender.Female) sex = "GirlOfLS";
+                AddNotification("CHAR_LIFEINVADER", "~r~@SAN_ANDREAS_LIFE", "~r~" + sex, message);
+
+
+                coolcar = null;
+                CoolCarPed = null;
+                PhotoDone = false;
+                camHeight = 0f;
+                if (CoolCarCam != null) CoolCarCam.Destroy();
+                CoolCarCam = null;
+
+                return;
+            }
+        }
+
+
         //Each second
         if (Interval < Game.GameTime)
         {
             Interval = Game.GameTime + 1000;
 
+            if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Bennys");
+
+
+
+
+
+            if (CanWeUse(Overtaker))
+            {
+                if (CanWeUse(Overtaken))
+                {
+
+                    if (GetOffset(Overtaken, Overtaker).X > 0)
+                    {
+                        Function.Call(Hash.SET_VEHICLE_INDICATOR_LIGHTS, Overtaker.CurrentVehicle, 0, true);
+                        Function.Call(Hash.SET_VEHICLE_INDICATOR_LIGHTS, Overtaker.CurrentVehicle, 1, false);
+                    }
+                    else
+                    {
+                        Function.Call(Hash.SET_VEHICLE_INDICATOR_LIGHTS, Overtaker.CurrentVehicle, 1, true);
+                        Function.Call(Hash.SET_VEHICLE_INDICATOR_LIGHTS, Overtaker.CurrentVehicle, 0, false);
+                    }
+
+                }
+
+            }
+
+            //if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~b~dice says bennys");
+
+            //Benny's Motorworks
+            if (!ScenarioFlow.Contains(ScenarioType.AmbientTuner) && CurrentlyAllowedScenarios.Contains(ScenarioType.AmbientTuner) && Bennys.Count > 0
+            && Game.Player.Character.IsInRangeOf(BennysMotorworks, 200f) && !CanPedSeePos(Game.Player.Character, BennysMotorworks, true))
+            {
+                Model model = Bennys[RandomInt(0, Bennys.Count - 1)];
+                if (model.IsValid)
+                {
+                    Vehicle veh = World.CreateVehicle(Bennys[RandomInt(0, Bennys.Count)], BennysMotorworks, 0);
+                    if (CanWeUse(veh))
+                    {
+                        RandomTuning(veh, true, false, true, false, false);
+                        Ped ped = veh.CreateRandomPedOnSeat(VehicleSeat.Driver);
+                        ped.AlwaysKeepTask = true;
+
+                        Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, ped, veh, 15f, 1 + 2 + 4 + 8 + 16 + 32);
+                        if (!veh.CurrentBlip.Exists() && DebugBlips)
+                        {
+                            veh.AddBlip();
+                            veh.CurrentBlip.Sprite = BlipSprite.PersonalVehicleCar;
+                            veh.CurrentBlip.Scale = 0.7f;
+                            veh.CurrentBlip.Color = BlipColor.Green;
+                            veh.CurrentBlip.IsShortRange = true;
+                            veh.CurrentBlip.Name = "Custom Vehicle";
+                        }
+                        if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~b~Benny's car spawned");
+
+                        ped.IsPersistent = false;
+                        veh.IsPersistent = false;
+                        EventCooldownTime = EventCooldownTime + 20000;
+                        ScenarioFlow.Add(ScenarioType.AmbientTuner);
+                        //         BennysCooldown = Game.GameTime + (1000 * 60 * 5);
+                        return;
+                    }
+                }
+            }
+            /*
+            foreach(Vehicle car in AllVehicles)
+            {
+                if((CanWeUse(car) && (car.ClassType == VehicleClass.Muscle || car.ClassType == VehicleClass.Super || car.ClassType == VehicleClass.Sports) && car.IsInRangeOf(Game.Player.Character.Position, 40f) && car.Speed<20f))
+                {
+                    Vector3 p = car.Position;
+
+                    if (!Function.Call<bool>(Hash.IS_SHOCKING_EVENT_IN_SPHERE, 113, p.X, p.Y, p.Z, 30f))
+                    {
+                        Function.Call(Hash.ADD_SHOCKING_EVENT_FOR_ENTITY, 113, car, 30f);
+                     //   UI.Notify("Added cool car event for " + car.FriendlyName);
+                    }
+                }
+            }            
+            Vector3 pPos = Game.Player.Character.Position;
+            if (Game.Player.Character.IsOnFoot && Game.Player.Character.Weapons.Current.Hash != WeaponHash.Unarmed)
+            {
+                if (!Function.Call<bool>(Hash.IS_SHOCKING_EVENT_IN_SPHERE, 112, pPos.X, pPos.Y, pPos.Z, 30f))
+                {
+                    Function.Call(Hash.ADD_SHOCKING_EVENT_FOR_ENTITY, 112, Game.Player.Character.Weapons.CurrentWeaponObject, 5f);
+            //        UI.ShowSubtitle("Visible gun event respawned.");
+                }
+            }
+            */
+            if (CurrentlyAllowedScenarios.Contains(ScenarioType.PlayerCoolCarPhoto))
+            {
+
+                Vehicle v = Game.Player.Character.LastVehicle;
+                if (CanWeUse(v) && (v.Livery != 0 || new List<VehicleClass> { VehicleClass.Super, VehicleClass.Sports, VehicleClass.Muscle }.Contains(v.ClassType) || v.GetMod(VehicleMod.Livery) != -1))
+                {
+                    Vector3 p = v.Position;
+
+                    if (!Function.Call<bool>(Hash.IS_SHOCKING_EVENT_IN_SPHERE, 113, p.X, p.Y, p.Z, 30f))
+                    {
+                        Function.Call(Hash.ADD_SHOCKING_EVENT_FOR_ENTITY, 113, v, 30f);
+                    }
+                }
+                if (!CanWeUse(CoolCarPed) && !PhotoDone)
+                {
+                    foreach (Ped p in AllPeds)
+                    {
+                        if (CanWeUse(p) && p.IsInRangeOf(Game.Player.Character.Position, 40f) && p.IsInRangeOf(v.Position, 30f) && Function.Call<bool>(Hash.GET_IS_TASK_ACTIVE, p, 89))
+                        {
+
+                            /*
+                            foreach (Vehicle candidate in AllVehicles)
+                            {
+                                if (CanWeUse(candidate))
+                                {
+                                    Vector3 candP = v.Position;
+                                    if (Function.Call<bool>(Hash.IS_SHOCKING_EVENT_IN_SPHERE, 113, candP.X, candP.Y, candP.Z, 5f))
+                                    {
+                                        CoolCarPed = p;
+
+                                        coolcar = candidate;
+                                        SetDecorBool("Ignore", p, true);
+                                        if (p.Gender == Gender.Male) UI.ShowSubtitle("~b~[Guy]~w~ Cool car man, mind if I take a photo?", 3000); else UI.ShowSubtitle("~b~[Girl]~w~ Cool car man, mind if I take a photo?", 3000);
+
+                                        // UI.Notify(Function.Call<float>(Hash.GET_ENTITY_ANIM_CURRENT_TIME, p, "amb@world_human_tourist_mobile_car@male@base", "").ToString());
+                                        break;
+                                    }
+                                }
+                            }
+                            */
+                            CoolCarPed = p;
+                            coolcar = v;
+                            if (p.Gender == Gender.Male) UI.ShowSubtitle("~b~[Guy]~w~ Cool car man, mind if I take a photo?", 3000); else UI.ShowSubtitle("~b~[Girl]~w~ Cool car man, mind if I take a photo?", 3000);
+
+                        }
+
+                    }
+
+                }
+            }
 
             //Handlers
-
-
-
             if (TemporalPersistence.Count > 0)
             {
-                if (Debug) UI.Notify("Persistent entities: " + TemporalPersistence.Count);
+                if (Debug >= DebugLevel.Everything) UI.Notify("Persistent entities: " + TemporalPersistence.Count);
                 for (int i = 0; i < TemporalPersistence.Count - 1; i++)
                 {
                     if (!CanWeUse(TemporalPersistence[i]))
@@ -1352,7 +1772,7 @@ Flags from decompiled scripts:
                     {
                         if (!TemporalPersistence[i].IsInRangeOf(Game.Player.Character.Position, 200f))
                         {
-                            if (Debug) UI.Notify("Removing persistent ~b~" + TemporalPersistence[i].ToString() + ""); // 
+                            if (Debug >= DebugLevel.Everything) UI.Notify("Removing persistent ~b~" + TemporalPersistence[i].ToString() + ""); // 
                             TemporalPersistence[i].IsPersistent = false;
                             TemporalPersistence.RemoveAt(i);
                             break;
@@ -1362,17 +1782,22 @@ Flags from decompiled scripts:
             }
             if (BarnCars.Count > 0)
             {
-              //  UI.ShowSubtitle("checkin");
 
                 foreach (Vehicle ve in BarnCars)
                 {
                     if (CanWeUse(ve))
                     {
+                        if (BarnFindTutorial < Game.GameTime && Game.Player.Character.IsInRangeOf(ve.Position, 20f) && !ve.IsOccluded)
+                        {
+                            BarnFindTutorial = Game.GameTime + 40000;
+                            AddQueuedHelpText("You can fix this car in any LS Customs if you manage to move it there.");
+                        }
                         if (ve.EngineHealth > 500)
                         {
                             Function.Call(Hash.SET_ENTITY_RENDER_SCORCHED, ve, false);
                             ve.EnginePowerMultiplier = 1;
                             ve.IsDriveable = true;
+                            if (ve.CurrentBlip.Exists()) ve.CurrentBlip.Remove();
                             //UI.Notify("fixed");
                             BarnCars.Remove(ve);
                             break;
@@ -1388,13 +1813,12 @@ Flags from decompiled scripts:
             }
             else
             {
-               // UI.ShowSubtitle("barn is empty");
+                // UI.ShowSubtitle("barn is empty");
 
             }
 
             // if (Racers.Count > 0) HandleRacers();
-            if (FreightTruckCooldown < Game.GameTime) HandleFreightTrucks();
-            HandleFlabeds();
+
 
             HandleCarjacker();
             int prob = 1;
@@ -1404,19 +1828,19 @@ Flags from decompiled scripts:
                 //if(Game.Player.Character.IsInRangeOf(NoEventsHere,500f)
 
 
-           
 
 
 
-            if (Taxis.Count > 0)
-            {
-                if (Taxis[0].Finished)
+
+                if (Taxis.Count > 0)
                 {
-                    Taxis[0].Clear();
-                    Taxis.RemoveAt(0);
+                    if (Taxis[0].Finished)
+                    {
+                        Taxis[0].Clear();
+                        Taxis.RemoveAt(0);
+                    }
+                    else foreach (TaxiEvent t in Taxis) t.Process();
                 }
-                else foreach (TaxiEvent t in Taxis) t.Process();
-            }
 
             if (DrugDeals.Count > 0)
             {
@@ -1456,20 +1880,20 @@ Flags from decompiled scripts:
             {
                 if (RandomInt(0, 100) < InteractionFrecuency) Scenarios();
             }
-            else if (Debug) UI.Notify("Player is in restricted area, Scenarios disabled.");
+            else if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Player is in restricted area, Scenarios disabled.");
         }
 
         //Spawner
-        if (SpawnerEventCooldownTime < Game.GameTime) //Spawner events
+        if (EventCooldownTime < Game.GameTime) //Spawner events
         {
-            SpawnerEventCooldownTime = Game.GameTime + EventCooldown;
+            EventCooldownTime = Game.GameTime + EventCooldown;
             if (!BlacklistedAreas.Contains(World.GetZoneNameLabel(Game.Player.Character.Position).ToLowerInvariant()))
             {
-                if (AllVehicles.Count > 10) HandleSpawnerEvents();
-                else if (Debug) { UI.Notify("~b~[Ambient Events]~w~: Not enough traffic to spawn anything."); SpawnerEventCooldownTime = Game.GameTime + 60000; }
+                if (AllVehicles.Length > 10) HandleEvents();
+                else if (Debug >= DebugLevel.EventsAndScenarios) { UI.Notify("~b~[Ambient Events]~w~: Not enough traffic to spawn anything."); EventCooldownTime = Game.GameTime + 60000; }
 
             }
-            else if (Debug) UI.Notify("Player is in restricted area, SpawnerEvents disabled.");
+            else if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Player is in restricted area, SpawnerEvents disabled.");
         }
 
         //Car replacer
@@ -1512,13 +1936,81 @@ Flags from decompiled scripts:
 
     int t = 0;
     int hiccupdetector = Game.GameTime;
+
+
+    int GametimeMinute = 0;
+    int GametimeThirtySecs = 0;
+    int AllVehiclesCurrent = 0;
+    int GameTimeVeryShort = 0;
+    int GameTimeAllCars = 0;
+    List<Model> CopVehicles = new List<Model>();
     void OnTick(object sender, EventArgs e)
     {
-        
+
+        if (GametimeMinute < Game.GameTime)
+        {
+            GametimeMinute = Game.GameTime + 60000;
+
+            if (Eventflow.Count > 0) Eventflow.RemoveAt(0);
+        }
+
+
+        if (GametimeThirtySecs < Game.GameTime)
+        {
+            GametimeThirtySecs = Game.GameTime + 30000;
+            if (ScenarioFlow.Count > 0) ScenarioFlow.RemoveAt(0);
+
+        }
+
+        if (GameTimeVeryShort < Game.GameTime)
+        {
+            GameTimeVeryShort = Game.GameTime + 5;
+            if (FadeIn.Count > 0)
+            {
+                Entity fadeInE = FadeIn[0];
+
+                if (CanWeUse(FadeIn[0]))
+                {
+                    if (fadeInE.Alpha < 255)
+                    {
+                        int fadeInt = fadeInE.Alpha + 10;
+                        if (fadeInt >= 255) fadeInE.Alpha = 255; else fadeInE.Alpha = fadeInt;
+                    }
+                    else
+                    {
+                        //UI.Notify("finished " + fadeInE);
+                        FadeIn.RemoveAt(0);
+                    }
+                }
+            }
+        }
+
+        //    UI.ShowSubtitle(Function.Call<float>(Hash.GET_ENTITY_ANIM_CURRENT_TIME, Game.Player.Character, "amb@world_human_tourist_mobile_car@male@base", "base").ToString(), 40);
+
+        if (GameTimeAllCars < Game.GameTime)
+        {
+            GameTimeAllCars = Game.GameTime + 400;
+            AllVehiclesChecker();
+
+        }
+
+
+        if (GameTimeRefLong < Game.GameTime)
+        {
+            GameTimeRefLong = Game.GameTime + 5000;
+
+            if (CopVehicles.Count > 3) CopVehicles.RemoveAt(0);
+
+
+            RebuildPools();
+            if (Debug >= DebugLevel.Everything) UI.ShowSubtitle("Context: ~b~" + CurrentPlayerContext.ToString());
+
+        }
+
         if (Game.GameTime > hiccupdetector + 500)
         {
-          if(Debug)  UI.Notify("~r~Game hiccup detected");
-            if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - HICCUP DETECTED ("+(Game.GameTime- hiccupdetector)+"ms) - check the output above this to find the culprit");
+            if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~r~Game hiccup detected");
+            if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - HICCUP DETECTED (" + (Game.GameTime - hiccupdetector) + "ms) - check the output above this to find the culprit");
         }
 
         hiccupdetector = Game.GameTime;
@@ -1548,18 +2040,354 @@ Flags from decompiled scripts:
         HandleMessages();
         if (Game.IsControlJustPressed(2, GTA.Control.Context))
         {
-            if (Hunters.Count > 0 && Hunters[0].HunterPed.IsInRangeOf(Game.Player.Character.Position,15) && !Hunters[0].HunterPed.IsInCombat)
+            if (Hunters.Count > 0 && Hunters[0].HunterPed.IsInRangeOf(Game.Player.Character.Position, 15) && !Hunters[0].HunterPed.IsInCombat)
             {
                 LivelyWorld.AddQueuedConversation("~b~[" + Game.Player.Name + "]:~w~ Hey pal, that direction.");
                 Hunters[0].HelpHunter();
             }
         }
+
         EventGenerator();
         ProcessCheats();
         ProcessLists();
         ProcessCurrentEvents();
     }
 
+
+    Ped Overtaker = null;
+    Ped Overtaken = null;
+
+    int HandleFlabedsCooldown = 0;
+    int FreightTruckCooldown = 0;
+    void AllVehiclesChecker()
+    {
+        if (AllVehicles == null) AllVehicles = World.GetAllVehicles();
+        int Towed = 0;
+        if (AllVehicles.Length > 0)
+        {
+            for (int i = 0; i < 20; i++)
+            {
+                AllVehiclesCurrent++;
+                if (Debug >= DebugLevel.Everything) UI.ShowSubtitle(AllVehiclesCurrent.ToString() + " of " + AllVehicles.Length, 500);
+                if (AllVehiclesCurrent > AllVehicles.Length - 1)
+                {
+                    AllVehiclesCurrent = 0;
+                    AllVehicles = World.GetAllVehicles();
+                    //  UI.ShowSubtitle("Refreshed",500);
+                }
+                Vehicle veh = AllVehicles[AllVehiclesCurrent];
+
+                if (CanWeUse(veh) && !BlacklistedVehicles.Contains(veh) && !veh.PreviouslyOwnedByPlayer && !veh.IsPersistent)
+                {
+
+                    if (!CanWeUse(Overtaker) && veh.Speed > 10f && IsRoadBusy(veh.Position) < 5 && CurrentlyAllowedScenarios.Contains(ScenarioType.DriverOvertake) && !ScenarioFlow.Contains(ScenarioType.DriverOvertake))
+                    {
+                        if (veh.Model.IsCar || veh.Model.IsBike || veh.Model.IsBicycle)
+                        {
+                            if (CanWeUse(veh.Driver) && !veh.Driver.IsPlayer && !veh.Driver.IsInCombat && veh.IsInRangeOf(Game.Player.Character.Position, 50f))
+                            {
+                                RaycastResult D = World.Raycast(veh.Position + (veh.ForwardVector * (veh.Model.GetDimensions().Y / 2)), veh.ForwardVector * 30f, 30f, IntersectOptions.Everything, veh);
+                                if (CanWeUse(D.HitEntity) && D.HitEntity.IsInRangeOf(veh.Position, 20f) && (D.HitEntity.Model.IsVehicle))
+                                {
+                                    Overtaken = (D.HitEntity as Vehicle).Driver;
+                                    Overtaker = veh.Driver;
+                                    Overtaker.IsPersistent = true;
+                                    //UI.Notify(veh.FriendlyName + " overtakes "+ (D.HitEntity as Vehicle).FriendlyName);
+                                    // veh.Driver.DrivingStyle = (DrivingStyle)4 + 8;
+                                    //veh.Driver.DrivingSpeed = 200f;
+                                    //veh.Driver.MaxDrivingSpeed = 200f;
+                                    Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, Overtaker, veh, veh.Speed + 20f, 2 + 4 + 8 + 16 + 32 + 128 + 512);
+                                    Overtaker.AlwaysKeepTask = true;
+                                    Function.Call(GTA.Native.Hash.SET_DRIVER_ABILITY, Overtaker, 100f);
+                                    if (!Overtaken.IsPersistent) Overtaken.IsPersistent = true;
+                                    ScenarioFlow.Add(ScenarioType.DriverOvertake);
+                                    BlacklistedVehicles.Add(veh);
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+
+                    if (veh.Model.IsCar && isCopVehicleRange(veh.Position, veh.Model.GetDimensions().X))
+                    {
+                        if (!CopVehicles.Contains(veh.Model)) CopVehicles.Add(veh.Model);
+
+
+                        int Chance = 20;
+                        if (NearBeachAreas.Contains(World.GetZoneNameLabel(veh.Position))) Chance = 70;
+                        if (CurrentlyAllowedScenarios.Contains(ScenarioType.CopCarCarryingCopBike) && !ScenarioFlow.Contains(ScenarioType.CopCarCarryingCopBike) && !veh.IsOnScreen)
+                        {
+                            int Rand = RandomInt(0, 100);
+                            if (Chance < Rand)
+                            {
+                                Vehicle bike = AttachBikeToCar(veh, "cycle");
+                                BlacklistedVehicles.Add(veh);
+                                if (Debug >= DebugLevel.EventsAndScenarios)
+                                {
+                                    UI.Notify("Spawned a police bicycle on " + veh.FriendlyName + " (~g~" + Chance + "%~w~ chance)");
+                                }
+                            }
+                            else
+                            {
+                                if (Debug >= DebugLevel.EventsAndScenarios)
+                                {
+                                    UI.Notify("Failed chance to spawn a police bicycle on " + veh.FriendlyName + " (~r~" + Chance + "%~w~ chance)");
+                                }
+                            }
+                            ScenarioFlow.Add(ScenarioType.CopCarCarryingCopBike);
+                            continue;
+
+                        }
+                    }
+
+
+                    //IsInNamedArea(Game.Player.Character, "Senora Fwy") || IsInNamedArea(Game.Player.Character, "Great Ocean Hwy")
+                    if (CurrentlyAllowedScenarios.Contains(ScenarioType.ImprovedFreight) && ScenarioFlow.Contains(ScenarioType.ImprovedFreight) && veh.HasBone("attach_female") && veh.ClassType == VehicleClass.Commercial &&
+                        !BlacklistedVehicles.Contains(veh) && !Game.Player.Character.IsInRangeOf(veh.Position, 20f) && !veh.IsPersistent && CanWeUse(veh.Driver))
+                    {//(veh.Model == "juggernaut" || veh.Model == "packer" || veh.Model == "hauler" || veh.Model == "phantom" || veh.Model == "roadkiller") !DecorExistsOn("DontInfluence", veh) 
+                        Vehicle trailer = GetTrailer(veh);
+
+                        if (!CanWeUse(trailer) && !Function.Call<bool>(Hash.IS_VEHICLE_ATTACHED_TO_TRAILER, veh))
+                        {
+                            veh.IsPersistent = true;
+                            Script.Wait(200);
+                            Vector3 pos = veh.Position + (veh.ForwardVector * -10);
+                            TemporalPersistence.Add(veh);
+
+                            trailer = World.CreateVehicle(VehicleHash.FreightTrailer, pos, veh.Heading);
+                            trailer.Speed = veh.Speed;
+                            TemporalPersistence.Add(trailer);
+
+                            if (DebugBlips)
+                            {
+                                if (!veh.CurrentBlip.Exists())
+                                {
+                                    veh.AddBlip();
+                                    veh.CurrentBlip.Color = BlipColor.White;
+                                    veh.CurrentBlip.Sprite = BlipSprite.PersonalVehicleCar;
+                                    veh.CurrentBlip.IsShortRange = false;
+                                    veh.CurrentBlip.Name = "Freight Truck";
+                                }
+                                if (!veh.CurrentBlip.Exists())
+                                {
+                                    trailer.CurrentBlip.Color = BlipColor.White;
+                                    trailer.CurrentBlip.Sprite = BlipSprite.PersonalVehicleCar;
+                                    trailer.CurrentBlip.IsShortRange = false;
+                                    trailer.CurrentBlip.Name = "Freight trailer";
+                                }
+                            }
+                            if (RandomInt(0, 10) <= 5)
+                            {
+                                Vehicle cargo = World.CreateVehicle(VehicleHash.Annihilator, pos + new Vector3(0, 3, 5), veh.Heading);
+                                TemporalPersistence.Add(cargo);
+                                cargo.ToggleExtra(1, false);
+                                cargo.AttachTo(trailer, 0, (new Vector3(0, 2, -0.4f)), new Vector3(0, 0, 0));
+                                if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("[FreighTrucks] Freight (annihilator) spawned on a " + veh.FriendlyName + ".");
+                            }
+                            else
+                            {
+                                Vehicle cargo = World.CreateVehicle(VehicleHash.Buzzard2, pos + new Vector3(0, 3, 5), veh.Heading);
+                                TemporalPersistence.Add(cargo);
+                                cargo.ToggleExtra(1, false);
+                                cargo.AttachTo(trailer, 0, (new Vector3(0, -5, -0.3f)), new Vector3(0, 0, 0));
+
+                                cargo = World.CreateVehicle(VehicleHash.Buzzard2, pos + new Vector3(0, 3, 5), veh.Heading);
+                                TemporalPersistence.Add(cargo);
+                                cargo.ToggleExtra(1, false);
+                                cargo.AttachTo(trailer, 0, (new Vector3(0, 5, -0.3f)), new Vector3(0, 0, 0));
+                                if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("[FreighTrucks] Freight (helis) spawned on a " + veh.FriendlyName + ".");
+                            }
+
+                            Function.Call(Hash.ATTACH_VEHICLE_TO_TRAILER, veh, trailer, 50);
+                            FreightTruckCooldown = Game.GameTime + (1000 * 60 * RandomInt(2, 6));
+                            BlacklistedVehicles.Add(veh);
+                            continue;
+                        }
+                    }
+
+                    if (CurrentlyAllowedScenarios.Contains(ScenarioType.ImprovedFlatbeds) && veh.Speed < 20f && HandleFlabedsCooldown < Game.GameTime && !DecorExistsOn("DontInfluence", veh) && !CanWeUse(GetAttachedVehicle(veh, false)) &&
+                        !BlacklistedVehicles.Contains(veh) && (!veh.IsOnScreen || !Game.Player.Character.IsInRangeOf(veh.Position, 50f)) && (CarrierVehicles.Contains(veh.Model) && CanWeUse(GetOwner(veh))))
+                    {
+                        if (Debug >= DebugLevel.Everything) UI.Notify("Got carrier, " + veh.FriendlyName);
+                        string vehicle = RandomNormalVehicle();
+
+                        veh.IsPersistent = true;
+                        Vehicle cargo = World.CreateVehicle(vehicle, veh.Position + (veh.ForwardVector * -5f));
+
+                        if (CanWeUse(cargo))
+                        {
+                            cargo.PlaceOnGround();
+                            //cargo.Speed = veh.Speed;
+
+                            //veh.Speed = veh.Speed / 2f; //veh.FreezePosition = true;
+                            HandleFlabedsCooldown = Game.GameTime + (1000 * RandomInt(2, 6));
+
+
+                            // cargo.IsPersistent = false;
+                            Attach(veh, cargo);
+
+                            if (!veh.CurrentBlip.Exists() && DebugBlips)
+                            {
+                                veh.AddBlip();
+                                veh.CurrentBlip.Color = BlipColor.White;
+                                veh.CurrentBlip.Name = "Carrier";
+                                veh.CurrentBlip.IsShortRange = true;
+                            }
+                            // veh.FreezePosition = false;
+                            if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("[Carriers] Attached " + cargo.FriendlyName + " on " + veh.FriendlyName + ".");
+                            TemporalPersistence.Add(cargo);
+                            TemporalPersistence.Add(veh);
+                            BlacklistedVehicles.Add(veh);
+                            continue;
+
+                        }
+
+
+                    }
+
+                    if (TruckRespray && Respraymodels.Contains(veh.Model) && !veh.IsPersistent && !BlacklistedVehicles.Contains(veh) && !Game.Player.Character.IsInRangeOf(veh.Position, 40f))
+                    {
+                        ResprayTruck(veh);
+                        BlacklistedVehicles.Add(veh);
+                    }
+
+
+
+                    if (CurrentlyAllowedScenarios.Contains(ScenarioType.StrippedCar) && !ScenarioFlow.Contains(ScenarioType.StrippedCar) && IsSuitableForPlayerToExperience(veh.Position, 150f) &&
+                        !WouldPlayerNoticeChangesHere(veh.Position) && (GangAreas.Contains(World.GetZoneNameLabel(veh.Position)) && new List<VehicleClass> { VehicleClass.Emergency }.Contains(veh.ClassType) == false))
+                    {
+                        if (!CanWeUse(veh.Driver))
+                        {
+                            StripOfAllPossible(veh, true, true, true, true, true, true);
+
+                            if (DebugBlips && !veh.CurrentBlip.Exists())
+                            {
+                                veh.AddBlip();
+                                veh.CurrentBlip.Sprite = BlipSprite.PersonalVehicleCar;
+                                veh.CurrentBlip.Scale = 0.7f;
+                                veh.CurrentBlip.IsShortRange = true;
+                                veh.CurrentBlip.Name = "Stripped " + veh.FriendlyName;
+                                veh.CurrentBlip.Color = BlipColor.Red;
+                            }
+                            //veh.PrimaryColor = VehicleColor.WornBrown;
+                            // veh.SecondaryColor = VehicleColor.WornBrown;
+                            BlacklistedVehicles.Add(veh);
+                            ScenarioFlow.Add(ScenarioType.StrippedCar);
+                            continue;
+                        }
+                    }
+
+                    if (Towed < 4 && CurrentlyAllowedScenarios.Contains(ScenarioType.ImprovedTowtrucks))
+                    {
+                        Ped p = GetOwner(veh);
+                        if (!CanWeUse(p) || p.IsPlayer) continue;
+                        if (!veh.IsPersistent && veh.HasBone("tow_arm") && !CanWeUse(Function.Call<Vehicle>(GTA.Native.Hash.GET_ENTITY_ATTACHED_TO_TOW_TRUCK, veh))) // (veh.Model == "towtruck" || veh.Model == "towtruck2")
+                        {
+                            BlacklistedVehicles.Add(veh);
+                            AttachRandomCarToTow(veh);
+                            Towed++;
+                            continue;
+
+                        }
+                    }
+                    if (CurrentlyAllowedScenarios.Contains(ScenarioType.LoudRadio) && ScenarioFlow.Contains(ScenarioType.LoudRadio) && IsSuitableForPlayerToExperience(veh.Position, 40f))
+                    {
+                        if (30 < RandomInt(0, 100))
+                        {
+                            if (!veh.IsPersistent && veh.EngineRunning && CanWeUse(veh.Driver))
+                            {
+                                veh.IsRadioEnabled = true;
+
+                                Function.Call(Hash.SET_VEHICLE_RADIO_LOUD, veh, true);
+                                if (DebugBlips && !veh.CurrentBlip.Exists())
+                                {
+                                    veh.AddBlip();
+                                    veh.CurrentBlip.Sprite = BlipSprite.SonicWave;
+                                    //veh.CurrentBlip.Scale = 0.7f;
+                                    veh.CurrentBlip.IsShortRange = true;
+                                    veh.CurrentBlip.Name = "RadioBlasting " + veh.FriendlyName;
+                                    veh.CurrentBlip.Color = BlipColor.Red;
+                                }
+                            }
+                        }
+                        ScenarioFlow.Add(ScenarioType.LoudRadio);
+                        continue;
+
+                    }
+
+
+                    if (CurrentlyAllowedScenarios.Contains(ScenarioType.StoppedAtLightsInteraction) && !ScenarioFlow.Contains(ScenarioType.StoppedAtLightsInteraction) && !veh.IsPersistent && IsSuitableForPlayerToExperience(veh.Position, 20f))
+                    {
+                        if (veh.IsStoppedAtTrafficLights)
+                        {
+                            Ped driver = veh.Driver;
+                            if (CanWeUse(driver) && !driver.IsPlayer)
+                            {
+                                if (veh.GetModCount(VehicleMod.Hydraulics) > 0)
+                                {
+                                    veh.ApplyForceRelative(veh.UpVector * 5);
+                                    if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("LowriderJump for " + veh.FriendlyName);
+                                }
+                                else if (new List<VehicleClass> { VehicleClass.Muscle, VehicleClass.Sports, VehicleClass.SportsClassics, VehicleClass.Super }.Contains(veh.ClassType))
+                                {
+                                    Function.Call(Hash.TASK_VEHICLE_TEMP_ACTION, driver, veh, 30, 3000);
+                                    ScenarioFlow.Add(ScenarioType.StoppedAtLightsInteraction);
+                                    if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Burnout for " + veh.FriendlyName);
+                                }
+                                else
+                                {
+                                    veh.SoundHorn(2000);
+                                    ScenarioFlow.Add(ScenarioType.StoppedAtLightsInteraction);
+                                    if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Honk for " + veh.FriendlyName);
+                                }
+                            }
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+        else AllVehicles = World.GetAllVehicles();
+        //if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify(MonitoredVehicles.Count + " specific cars being monitored of " + AllVehicles.Count + ". ~n~(" + names + ")");
+
+    }
+    void AttachRandomCarToTow(Vehicle tow)
+    {
+        if (CanWeUse(Function.Call<Vehicle>(GTA.Native.Hash.GET_ENTITY_ATTACHED_TO_TOW_TRUCK, tow))) return;
+        Script.Wait(500);
+        //Function.Call(GTA.Native.Hash.TASK_VEHICLE_DRIVE_WANDER, towdriver, tow, 15f, (1 + 24 + 16 + 32 + 262144));
+
+        Model model = GetRandomVehicleHash();
+        if (model.Hash == tow.Model.Hash) model = "blista";
+        Vehicle towed = World.CreateVehicle(model, tow.Position - (tow.ForwardVector * (tow.Model.GetDimensions().Y)), tow.Heading);
+        //towed.Heading = tow.Heading;
+
+
+        //Function.Call(Hash.SET_VEHICLE_FORWARD_SPEED, tow, 4f);
+        Function.Call(Hash.SET_VEHICLE_FORWARD_SPEED, towed, tow.Speed);
+
+        Function.Call(Hash.ATTACH_VEHICLE_TO_TOW_TRUCK, tow, towed, false, 0, 0, 0);
+        Function.Call(Hash._SET_TOW_TRUCK_CRANE_RAISED, tow, 1f);
+
+        if (DebugBlips && !tow.CurrentBlip.Exists())
+        {
+            tow.AddBlip();
+            //tow.CurrentBlip.Color = BlipColor.Green;
+            tow.CurrentBlip.Sprite = BlipSprite.TowTruck;
+            tow.CurrentBlip.Scale = 0.7f;
+            tow.CurrentBlip.IsShortRange = true;
+
+        }
+        tow.EngineRunning = true;
+        tow.SirenActive = true;
+        tow.IsPersistent = false;
+        //towdriver.IsPersistent = false;
+        towed.IsPersistent = false;
+
+        if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Tow + vehicle spawned");
+        BlacklistedVehicles.Add(tow);
+        BlacklistedVehicles.Add(towed);
+    }
 
     public Vehicle CarjackerTarget = null;
     public Ped Carjacker = null;
@@ -1569,11 +2397,11 @@ Flags from decompiled scripts:
     public void HandleCarjacker()
     {
 
-        if (!CanWeUse(CarjackerTarget) && AllVehicles.Count < 10)
+        if (!CanWeUse(CarjackerTarget) && AllVehicles.Length < 10)
         {
             CarjackerEnabled = false;
             CarjackerPhase = 0;
-            if (Debug) UI.Notify("~r~Carjacker event cancelled, not enough vehicles.");
+            if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~r~Carjacker event cancelled, not enough vehicles.");
             Carjacker = null;
             CarjackerTarget = null;
             return;
@@ -1582,7 +2410,7 @@ Flags from decompiled scripts:
 
         if (CarjackerEnabled)
         {
-            if(CanWeUse(Carjacker) && CanWeUse(CarjackerTarget) && Carjacker.IsSittingInVehicle(CarjackerTarget))
+            if (CanWeUse(Carjacker) && CanWeUse(CarjackerTarget) && Carjacker.IsSittingInVehicle(CarjackerTarget))
             {
                 if (Carjacker.RelationshipGroup != CriminalRelGroup) Carjacker.RelationshipGroup = CriminalRelGroup;
             }
@@ -1591,14 +2419,13 @@ Flags from decompiled scripts:
                 foreach (Vehicle veh in AllVehicles)
                 {
 
-                    if (CanWeUse(veh) && !DecorExistsOn("DontInfluence", veh) && veh.IsDriveable && !HasOwner(veh, true) && veh.Health>500 && veh.IsOnAllWheels && new List<VehicleClass> { VehicleClass.Compacts, VehicleClass.Muscle, VehicleClass.Sports, VehicleClass.SportsClassics, VehicleClass.Super}.Contains(veh.ClassType)   && Function.Call<bool>(Hash.IS_ENTITY_OCCLUDED, veh) && veh.IsStopped && !CanWeUse(veh.Driver) && veh.IsInRangeOf(Game.Player.Character.Position, InteractionRange))
+                    if (CanWeUse(veh) && !DecorExistsOn("DontInfluence", veh) && veh.IsDriveable && !HasOwner(veh, true) && veh.Health > 500 && veh.IsOnAllWheels && new List<VehicleClass> { VehicleClass.Compacts, VehicleClass.Muscle, VehicleClass.Sports, VehicleClass.SportsClassics, VehicleClass.Super }.Contains(veh.ClassType) && Function.Call<bool>(Hash.IS_ENTITY_OCCLUDED, veh) && veh.IsStopped && !CanWeUse(veh.Driver) && veh.IsInRangeOf(Game.Player.Character.Position, 60f))
                     {
-
                         CarjackerTarget = veh;
                         CarjackerTarget.IsPersistent = true;
                         BlacklistedVehicles.Add(CarjackerTarget);
                         TemporalPersistence.Add(CarjackerTarget);
-                        if (Debug) UI.Notify("~b~[Carjacker]~w~ got vehicle to jack, "+veh.FriendlyName);
+                        if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~b~[Carjacker]~w~ got vehicle to jack, " + veh.FriendlyName);
                         break;
                     }
                 }
@@ -1611,17 +2438,17 @@ Flags from decompiled scripts:
                 {
                     CarjackerEnabled = false;
                     CarjackerPhase = 0;
-                    if (Debug) UI.Notify("~r~Carjacker event cancelled, carjacker interrupted.");
+                    if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~r~Carjacker event cancelled, carjacker interrupted.");
                     if (Carjacker.CurrentBlip.Exists()) Carjacker.CurrentBlip.Remove();
 
                     return;
                 }
             }
-            if (CarjackerPhase>0 && (!CanWeUse(CarjackerTarget) || !CanWeUse(Carjacker)))
+            if (CarjackerPhase > 0 && (!CanWeUse(CarjackerTarget) || !CanWeUse(Carjacker)))
             {
                 CarjackerEnabled = false;
                 CarjackerPhase = 0;
-                if (Debug) UI.Notify("~r~Carjacker event cancelled.");
+                if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~r~Carjacker event cancelled.");
                 Carjacker = null;
                 CarjackerTarget = null;
                 return;
@@ -1637,9 +2464,9 @@ Flags from decompiled scripts:
 
                         if (!CanWeUse(Carjacker))
                         {
-                            Vector3 pos =  World.GetSafeCoordForPed(CarjackerTarget.Position.Around(20f)); // Game.Player.Character.Position.Around(5);//GetQuietPlace();
+                            Vector3 pos = World.GetSafeCoordForPed(CarjackerTarget.Position.Around(20f)); // Game.Player.Character.Position.Around(5);//GetQuietPlace();
                             if (pos == Vector3.Zero) pos = GenerateSpawnPos(CarjackerTarget.Position.Around(10), Nodetype.Offroad, true);
-                            if (Debug) UI.Notify("creating carjacker...");
+                            if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("creating carjacker...");
 
                             Carjacker = World.CreatePed("s_m_y_dealer_01", pos, 0);
                             Carjacker.AlwaysKeepTask = true;
@@ -1653,7 +2480,7 @@ Flags from decompiled scripts:
                             }
 
                             //CarjackerPhase++;
-                            if (Debug) UI.Notify("carjacker created");                           
+                            if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("carjacker created");
                         }
                         else
                         {
@@ -1669,9 +2496,9 @@ Flags from decompiled scripts:
                         {
                             if (IsIdle(Carjacker))
                             {
-                                if (Debug) UI.Notify("~b~[Carjacker]~w~ tasked to go to target");
+                                if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~b~[Carjacker]~w~ tasked to go to target");
 
-                                if(Carjacker.IsInRangeOf(CarjackerTarget.Position, 30f)) Function.Call(Hash.TASK_GO_TO_ENTITY, Carjacker, CarjackerTarget, -1, 3f, 1f, 1073741824, 0);
+                                if (Carjacker.IsInRangeOf(CarjackerTarget.Position, 30f)) Function.Call(Hash.TASK_GO_TO_ENTITY, Carjacker, CarjackerTarget, -1, 3f, 1f, 1073741824, 0);
                                 else Function.Call(Hash.TASK_GO_TO_ENTITY, Carjacker, CarjackerTarget, -1, 25f, 2f, 1073741824, 0);
 
                             }
@@ -1684,7 +2511,7 @@ Flags from decompiled scripts:
                     {
 
 
-                        if (Debug) UI.Notify("~b~[Carjacker]~w~ looking around");
+                        if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~b~[Carjacker]~w~ looking around");
                         LookOutTime = Game.GameTime + 10000;
                         TaskSequence seq = new TaskSequence();
 
@@ -1702,18 +2529,19 @@ Flags from decompiled scripts:
                     {
 
 
-                        if (LookOutTime<Game.GameTime)
+                        if (LookOutTime < Game.GameTime)
                         {
 
-                            if (isCopInRange(CarjackerTarget.Position, 30f) || CanPedSeePed(Carjacker, Game.Player.Character, false))
+                            if (isCopInRange(CarjackerTarget.Position, 30f) || (IsEntityAheadEntity(Game.Player.Character, Carjacker) && CanPedSeePed(Carjacker, Game.Player.Character, false)))
                             {
-                                if (Debug) UI.Notify("~b~[Carjacker]~w~ cops nearby, jacker leaves the scene");
+                                if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~b~[Carjacker]~w~ cops/player nearby, jacker leaves the scene");
                                 Function.Call(Hash.TASK_WANDER_STANDARD, Carjacker, 100f, 10f);
+                                if (Carjacker.CurrentBlip.Exists()) Carjacker.CurrentBlip.Color = BlipColor.White;
 
                             }
-                            else 
+                            else
                             {
-                                if (Debug) UI.Notify("~b~[Carjacker]~w~ no cops nearby, jacking");
+                                if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~b~[Carjacker]~w~ no cops nearby, jacking");
 
                                 TaskSequence seq = new TaskSequence();
                                 Function.Call(Hash.TASK_ENTER_VEHICLE, 0, CarjackerTarget, 20000, -1, 1f, 1, 0);
@@ -1724,7 +2552,7 @@ Flags from decompiled scripts:
                                 seq.Close();
                                 Carjacker.Task.PerformSequence(seq);
                                 seq.Dispose();
-                                Carjacker.BlockPermanentEvents = false;
+                                // Carjacker.BlockPermanentEvents = false;
 
                             }
                             CarjackerPhase++;
@@ -1737,13 +2565,15 @@ Flags from decompiled scripts:
 
                         if (Carjacker.IsJacking) Carjacker.RelationshipGroup = CriminalRelGroup;
 
-                        if (Carjacker.IsInVehicle(CarjackerTarget) || !Carjacker.IsInRangeOf(Game.Player.Character.Position,100f))
+                        if (Carjacker.IsInVehicle(CarjackerTarget) || !Carjacker.IsInRangeOf(Game.Player.Character.Position, 100f))
                         {
                             if (Carjacker.CurrentBlip.Exists()) Carjacker.CurrentBlip.Color = BlipColor.White;
 
-                            CarjackerTarget.IsPersistent = false;
-                            Carjacker.IsPersistent = false;
-                            if (Debug) UI.Notify("~b~[Carjacker]~w~ Carjacker event finished");
+                            TemporalPersistence.Add(Carjacker);
+                            TemporalPersistence.Add(CarjackerTarget);
+                            //   CarjackerTarget.IsPersistent = false;
+                            // Carjacker.IsPersistent = false;
+                            if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~b~[Carjacker]~w~ Carjacker event finished");
                             CarjackerEnabled = false;
                             CarjackerPhase = 0;
                         }
@@ -1765,7 +2595,7 @@ Flags from decompiled scripts:
         return rnd.Next(min, max);
     }
 
-    public enum Gang { Lost, Ballas, Vagos, Families};
+    public enum Gang { Lost, Ballas, Vagos, Families };
     public void SpawnGangDriveBy(Gang g, Ped victim)
     {
 
@@ -1773,19 +2603,19 @@ Flags from decompiled scripts:
         if (!CanWeUse(victim)) return;
         victim.IsPersistent = true;
 
-        if (Debug) UI.Notify("victim exists");
+        if (Debug >= DebugLevel.Everything) UI.Notify("victim exists");
 
         Vector3 pos = GenerateSpawnPos(Game.Player.Character.Position.Around(100), Nodetype.Road, false);
         //if (pos == Vector3.Zero) pos = GenerateSpawnPos(Game.Player.Character.Position, Nodetype.Road, false);
         Vehicle veh = null;
         List<Ped> Peds = new List<Ped>();
 
-        if (Debug) UI.Notify("setting rlgroups");
+        if (Debug >= DebugLevel.Everything) UI.Notify("setting rlgroups");
 
         int HateRLGroup = World.AddRelationshipGroup("hatetemp");
         int VictimRLGroup = World.AddRelationshipGroup("victimtemp");
         victim.RelationshipGroup = VictimRLGroup;
-       foreach (Ped p in World.GetNearbyPeds(victim,40f))
+        foreach (Ped p in World.GetNearbyPeds(victim, 40f))
         {
             World.SetRelationshipBetweenGroups(Relationship.Respect, VictimRLGroup, p.RelationshipGroup);
 
@@ -1795,7 +2625,7 @@ Flags from decompiled scripts:
 
         World.SetRelationshipBetweenGroups(Relationship.Hate, HateRLGroup, victim.RelationshipGroup);
         World.SetRelationshipBetweenGroups(Relationship.Hate, victim.RelationshipGroup, HateRLGroup);
-        if (Debug) UI.Notify("checking king of gang");
+        if (Debug >= DebugLevel.Everything) UI.Notify("checking king of gang");
 
         switch (g)
         {
@@ -1805,9 +2635,9 @@ Flags from decompiled scripts:
                     veh.PrimaryColor = VehicleColor.MetallicPurple;
                     veh.SecondaryColor = VehicleColor.MatteDesertBrown;
 
-                    for (int i= 0; i< veh.PassengerSeats+1; i++)
-                    {                        
-                        Ped ped = World.CreatePed(BallasModels[RandomInt(0,BallasModels.Count-1)], veh.Position.Around(5));
+                    for (int i = 0; i < veh.PassengerSeats + 1; i++)
+                    {
+                        Ped ped = World.CreatePed(BallasModels[RandomInt(0, BallasModels.Count - 1)], veh.Position.Around(5));
                         ped.RelationshipGroup = HateRLGroup;
                         ped.Weapons.Give(WeaponHash.Pistol, 99, true, true);
 
@@ -1819,7 +2649,7 @@ Flags from decompiled scripts:
                 {
                     veh = World.CreateVehicle("gburrito", pos);
                     veh.PrimaryColor = VehicleColor.MatteBlack;
-                    for (int i = 0; i < veh.PassengerSeats+1; i++)
+                    for (int i = 0; i < veh.PassengerSeats + 1; i++)
                     {
                         Ped ped = World.CreatePed(LostModels[RandomInt(0, LostModels.Count - 1)], veh.Position.Around(5));
                         ped.RelationshipGroup = HateRLGroup;
@@ -1834,7 +2664,7 @@ Flags from decompiled scripts:
                     veh.PrimaryColor = VehicleColor.MetallicTaxiYellow;
                     veh.SecondaryColor = VehicleColor.MetallicTaxiYellow;
 
-                    for (int i = 0; i < veh.PassengerSeats+1; i++)
+                    for (int i = 0; i < veh.PassengerSeats + 1; i++)
                     {
                         Ped ped = World.CreatePed(VagosModels[RandomInt(0, VagosModels.Count - 1)], veh.Position.Around(5));
                         ped.RelationshipGroup = HateRLGroup;
@@ -1847,7 +2677,7 @@ Flags from decompiled scripts:
                 {
                     veh = World.CreateVehicle("baller", pos);
                     veh.PrimaryColor = VehicleColor.MetallicGreen;
-                    for (int i = 0; i < veh.PassengerSeats+1; i++)
+                    for (int i = 0; i < veh.PassengerSeats + 1; i++)
                     {
                         Ped ped = World.CreatePed(FamiliesModels[RandomInt(0, FamiliesModels.Count - 1)], veh.Position.Around(5));
                         ped.RelationshipGroup = HateRLGroup;
@@ -1857,7 +2687,7 @@ Flags from decompiled scripts:
                     break;
                 }
         }
-        if (Debug) UI.Notify("setting up gang");
+        if (Debug >= DebugLevel.Everything) UI.Notify("setting up gang");
 
         if (DebugBlips)
         {
@@ -1865,17 +2695,17 @@ Flags from decompiled scripts:
             veh.CurrentBlip.Sprite = BlipSprite.GunCar;
             veh.CurrentBlip.IsShortRange = true;
         }
-             SetPedsIntoVehicle(Peds, veh);
+        SetPedsIntoVehicle(Peds, veh);
 
         Script.Wait(1000);
-            Ped driver = veh.Driver;
-            if (!CanWeUse(driver))
+        Ped driver = veh.Driver;
+        if (!CanWeUse(driver))
         {
-            if (Debug) UI.Notify("No driver!");
+            if (Debug >= DebugLevel.Everything) UI.Notify("No driver!");
             driver = Peds[0];
         }
-        MoveEntitytoNearestRoad(veh,true,true);
-        if (Debug) UI.Notify("tasking gang");
+        MoveEntitytoNearestRoad(veh, true, true);
+        if (Debug >= DebugLevel.Everything) UI.Notify("tasking gang");
 
         TaskSequence seq = new TaskSequence();
         Function.Call(Hash.TASK_ENTER_VEHICLE, 0, veh, 20000, -1, 1f, 1, 0);
@@ -1898,30 +2728,39 @@ Flags from decompiled scripts:
             victim.CurrentBlip.Name = "Victim";
             victim.CurrentBlip.IsShortRange = true;
         }
+        int id = 0;
+        Function.Call(Hash.CREATE_INCIDENT_WITH_ENTITY, 7, victim, 2, 3f, id);
+        Function.Call(Hash.ADD_SHOCKING_EVENT_FOR_ENTITY, 85, veh, 40f);
 
-
-        if (Debug) UI.Notify("finished");
-        GangDrivebyCooldown = Game.GameTime + 60 * 1000 * (RandomInt(2, 5));
+        if (Debug >= DebugLevel.Everything) UI.Notify("finished");
+        // GangDrivebyCooldown = Game.GameTime + 60 * 1000 * (RandomInt(2, 5));
     }
-    public static void RandomTuning(Vehicle veh, bool neons, bool horn)
+    public static void RandomTuning(Vehicle veh, bool parts, bool changecolor, bool livery, bool neons, bool horn)
     {
         Function.Call(Hash.SET_VEHICLE_MOD_KIT, veh, 0);
 
         //Change color
-        var color = Enum.GetValues(typeof(VehicleColor));
-        Random random = new Random();
-        veh.PrimaryColor = (VehicleColor)color.GetValue(random.Next(color.Length));
-
-        Random random2 = new Random();
-        veh.SecondaryColor = (VehicleColor)color.GetValue(random2.Next(color.Length));
-
-        if (veh.LiveryCount > 0) veh.Livery = RandomInt(0, veh.LiveryCount);
-
-        //Change tuning parts
-        foreach (int mod in Enum.GetValues(typeof(VehicleMod)).Cast<VehicleMod>())
+        if (changecolor)
         {
-            if (mod == (int)VehicleMod.Horns && !horn) continue;
-            veh.SetMod((VehicleMod)mod, RandomInt(0, veh.GetModCount((VehicleMod)mod)), false);
+            var color = Enum.GetValues(typeof(VehicleColor));
+            Random random = new Random();
+            veh.PrimaryColor = (VehicleColor)color.GetValue(random.Next(color.Length));
+
+            Random random2 = new Random();
+            veh.SecondaryColor = (VehicleColor)color.GetValue(random2.Next(color.Length));
+
+        }
+        if (livery) if (veh.LiveryCount > 0) veh.Livery = RandomInt(0, veh.LiveryCount);
+        if (parts)
+        {
+            //Change tuning parts
+            foreach (int mod in Enum.GetValues(typeof(VehicleMod)).Cast<VehicleMod>())
+            {
+                if (mod == (int)VehicleMod.Livery && !livery) continue;
+                if (mod == (int)VehicleMod.Horns && !horn) continue;
+                veh.SetMod((VehicleMod)mod, RandomInt(0, veh.GetModCount((VehicleMod)mod)), false);
+            }
+
         }
 
         if (neons)
@@ -1963,7 +2802,7 @@ Flags from decompiled scripts:
         if (WatcherIsPlayer)
         {
             if (watcher.IsInRangeOf(target, 10f)) return true;
-            ray = World.Raycast(GameplayCamera.Position, target, GameplayCamera.Position.DistanceTo(target)+5, IntersectOptions.Map);
+            ray = World.Raycast(GameplayCamera.Position, target, GameplayCamera.Position.DistanceTo(target) + 5, IntersectOptions.Map);
         }
         else
         {
@@ -1981,9 +2820,28 @@ Flags from decompiled scripts:
 
         return true;
     }
+
+
+    public int IsPosAheadEntity(Entity e, Vector3 pos)
+    {
+        return (int)Function.Call<Vector3>(Hash.GET_OFFSET_FROM_ENTITY_GIVEN_WORLD_COORDS, e, pos.X, pos.Y, pos.Z).Y;
+    }
+
+    public bool IsSuitableForPlayerToExperience(Vector3 pos, float noticeRadius)
+    {
+        if (pos.DistanceTo(Game.Player.Character.Position) > noticeRadius) return false;
+        if (Game.Player.Character.Velocity.Length() > 1f)
+        {
+            if (IsPosAheadEntity(Game.Player.Character, pos) > (Game.Player.Character.Velocity.Length() * 2)) return true;
+        }
+        if (Game.Player.Character.IsOnFoot) return true;
+
+        return false;
+    }
     public static bool WouldPlayerNoticeChangesHere(Vector3 pos)
     {
-        if (!Function.Call<bool>(Hash.WOULD_ENTITY_BE_OCCLUDED, Game.GenerateHash("blista"), pos.X, pos.Y, pos.Z, true)) return true;
+
+        if (Function.Call<bool>(Hash.WOULD_ENTITY_BE_OCCLUDED, Game.GenerateHash("blista"), pos.X, pos.Y, pos.Z, true)) return false; else return true;
         //if (CanPedSeePos(Game.Player.Character, pos, true)) return true;
         return false;
     }
@@ -2013,7 +2871,7 @@ Flags from decompiled scripts:
     {
         if (CanWeUse(DuelTruck) && CanWeUse(DuelTrailer) && CanWeUse(DuelDriver))
         {
-            if(DuelTruck.IsInRangeOf(Game.Player.Character.Position, 40f))
+            if (DuelTruck.IsInRangeOf(Game.Player.Character.Position, 40f))
             {
 
                 DuelTruck.SoundHorn(2000);
@@ -2068,7 +2926,7 @@ Flags from decompiled scripts:
 
             Entity e = Game.Player.Character;
 
-            if (Game.Player.Character.IsOnFoot &&  CanWeUse(Game.Player.Character.LastVehicle) && Game.Player.Character.IsInRangeOf(Game.Player.Character.LastVehicle.Position, 30f)) e = Game.Player.Character.LastVehicle;
+            if (Game.Player.Character.IsOnFoot && CanWeUse(Game.Player.Character.LastVehicle) && Game.Player.Character.IsInRangeOf(Game.Player.Character.LastVehicle.Position, 30f)) e = Game.Player.Character.LastVehicle;
             TaskSequence seq = new TaskSequence();
 
             Vector3 pos = DuelTruck.Position + (DuelTruck.ForwardVector * 20);
@@ -2078,7 +2936,7 @@ Flags from decompiled scripts:
             Function.Call(Hash.TASK_VEHICLE_MISSION_PED_TARGET, 0, DuelTruck, e, 4, 200f, 16777216, 3f, 20f, false);
 
             Function.Call(Hash.TASK_VEHICLE_TEMP_ACTION, 0, DuelTruck, 32, 1000);
-            Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, 0, DuelTruck, 25f, 1 + 2 + 4 + 8 + 16 + 32+128);
+            Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, 0, DuelTruck, 25f, 1 + 2 + 4 + 8 + 16 + 32 + 128);
             seq.Close();
             DuelDriver.Task.PerformSequence(seq);
             seq.Dispose();
@@ -2096,7 +2954,7 @@ Flags from decompiled scripts:
         }
     }
 
-    enum WereCarBehavior {Roaming, GoingToPosition, Taunting, Attacking };
+    enum WereCarBehavior { Roaming, GoingToPosition, Taunting, Attacking };
     Vehicle werecar = null;
     Ped weredriver = null;
     WereCarBehavior wcarstate = WereCarBehavior.Roaming;
@@ -2116,7 +2974,7 @@ Flags from decompiled scripts:
             {
                 Vector3 victimpos = Game.Player.Character.Position;
                 if (Function.Call<bool>((Hash)0x36D782F68B309BDA, werecar) && Math.Abs(Function.Call<Vector3>(Hash.GET_OFFSET_FROM_ENTITY_GIVEN_WORLD_COORDS, werecar, victimpos.X, victimpos.Y, victimpos.Z).X) < 5f &&
-                   Math.Abs(Function.Call<Vector3>(Hash.GET_ENTITY_ROTATION_VELOCITY, werecar, true).Z) < 0.3f && Math.Abs(Function.Call<Vector3>(Hash.GET_ENTITY_SPEED_VECTOR, werecar, true).Y)>1f)
+                   Math.Abs(Function.Call<Vector3>(Hash.GET_ENTITY_ROTATION_VELOCITY, werecar, true).Z) < 0.3f && Math.Abs(Function.Call<Vector3>(Hash.GET_ENTITY_SPEED_VECTOR, werecar, true).Y) > 1f)
                 {
                     UI.Notify("~y~Special ability!");
                     Function.Call((Hash)0x81E1552E35DC3839, werecar, true);
@@ -2134,12 +2992,12 @@ Flags from decompiled scripts:
                 p.BlockPermanentEvents = true;
                 // UI.Notify("~o~Something stalks you from the dark.");
                 weredriver = p;
-                Function.Call(Hash.SET_VEHICLE_LIGHTS,werecar, 1 );
+                Function.Call(Hash.SET_VEHICLE_LIGHTS, werecar, 1);
                 werecar.EnginePowerMultiplier = 1000;
                 return;
             }
 
-            if (werecar.IsDead || werecar.EngineHealth<300)
+            if (werecar.IsDead || werecar.EngineHealth < 300)
             {
                 if (CanWeUse(werecar.Driver)) werecar.Driver.Delete();
                 if (CanWeUse(weredriver)) weredriver.Delete();
@@ -2154,7 +3012,7 @@ Flags from decompiled scripts:
             {
                 case WereCarBehavior.Roaming:
                     {
-                        if(werecar.Driver.TaskSequenceProgress == -1)
+                        if (werecar.Driver.TaskSequenceProgress == -1)
                         {
                             Vector3 Destination = werecar.Position.Around(30f);
                             TaskSequence seq = new TaskSequence();
@@ -2177,8 +3035,8 @@ Flags from decompiled scripts:
                             TaskSequence seq = new TaskSequence();
 
                             //TASK_VEHICLE_MISSION_PED_TARGET(Ped ped, Vehicle vehicle, Ped pedTarget, int mode, float maxSpeed, int drivingStyle, float minDistance, float p7, BOOL p8)
-                            Function.Call(Hash.TASK_VEHICLE_MISSION_PED_TARGET, 0, werecar, Game.Player.Character, 4, 200f, 4 + 8 + 16 + 32 + 4194304, Game.Player.Character.Position.DistanceTo(werecar.Position) - 10f,20f , false);
-                            Function.Call(Hash.TASK_VEHICLE_TEMP_ACTION, 0, werecar,6, 2000);
+                            Function.Call(Hash.TASK_VEHICLE_MISSION_PED_TARGET, 0, werecar, Game.Player.Character, 4, 200f, 4 + 8 + 16 + 32 + 4194304, Game.Player.Character.Position.DistanceTo(werecar.Position) - 10f, 20f, false);
+                            Function.Call(Hash.TASK_VEHICLE_TEMP_ACTION, 0, werecar, 6, 2000);
                             //Function.Call(Hash.TASK_PAUSE, 0, 2000);
 
                             Function.Call(Hash.TASK_VEHICLE_MISSION_PED_TARGET, 0, werecar, Game.Player.Character, 4, 10f, 16777216, 20f, 100f, false);
@@ -2228,14 +3086,14 @@ Flags from decompiled scripts:
                             }
                             else
                             {
-                                  UI.Notify("~o~The beast repositions itself.");
+                                UI.Notify("~o~The beast repositions itself.");
 
                                 TaskSequence seq = new TaskSequence();
                                 Vector3 Destination = GenerateSpawnPos(werecar.Position.Around(20), Nodetype.AnyRoad, false);
                                 float dist = werecar.Position.DistanceTo(Game.Player.Character.Position) * 0.5f;
                                 if (dist < 30f) dist = 30f;
                                 Function.Call(Hash.TASK_VEHICLE_MISSION_PED_TARGET, 0, werecar, Game.Player.Character, 4, 10f, 4 + 8 + 16 + 32 + 4194304, dist, 15f, false);
-//                                Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE, 0, werecar, Destination.X, Destination.Y, Destination.Z, 15f, 4 + 8 + 16 + 32 + 4194304, 20f);
+                                //                                Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE, 0, werecar, Destination.X, Destination.Y, Destination.Z, 15f, 4 + 8 + 16 + 32 + 4194304, 20f);
                                 seq.Close();
                                 werecar.Driver.Task.PerformSequence(seq);
                                 seq.Dispose();
@@ -2247,13 +3105,13 @@ Flags from decompiled scripts:
                 case WereCarBehavior.Taunting:
                     {
 
-                        
+
                         break;
                     }
                 case WereCarBehavior.Attacking:
                     {
 
-                        if (werecar.Velocity.Length()<1f)
+                        if (werecar.Velocity.Length() < 1f)
                         {
                             if (werecar.IsDoorOpen(VehicleDoor.FrontLeftDoor)) werecar.CloseDoor(VehicleDoor.FrontLeftDoor, false);
                             if (werecar.IsDoorOpen(VehicleDoor.FrontRightDoor)) werecar.CloseDoor(VehicleDoor.FrontRightDoor, false);
@@ -2267,7 +3125,7 @@ Flags from decompiled scripts:
                             break;
                         }
 
-                        if(werecar.Velocity.Length()>5f && werecar.IsInRangeOf(Game.Player.Character.Position, 30f) && CheckDoorBehavior)
+                        if (werecar.Velocity.Length() > 5f && werecar.IsInRangeOf(Game.Player.Character.Position, 30f) && CheckDoorBehavior)
                         {
                             Vector3 victimpos = Game.Player.Character.Position;
 
@@ -2301,7 +3159,7 @@ Flags from decompiled scripts:
 
                             TaskSequence seq = new TaskSequence();
                             Function.Call(Hash.TASK_VEHICLE_TEMP_ACTION, 0, werecar, 31, 4000);
-                            Function.Call(Hash.TASK_VEHICLE_MISSION_PED_TARGET, 0, werecar, Game.Player.Character, 4, 10f,  4194304, werecar.Position.DistanceTo(Game.Player.Character.Position)*0.7f, 15f, false);
+                            Function.Call(Hash.TASK_VEHICLE_MISSION_PED_TARGET, 0, werecar, Game.Player.Character, 4, 10f, 4194304, werecar.Position.DistanceTo(Game.Player.Character.Position) * 0.7f, 15f, false);
 
                             seq.Close();
                             werecar.Driver.Task.PerformSequence(seq);
@@ -2310,10 +3168,10 @@ Flags from decompiled scripts:
                         }
 
 
-                        if (werecar.Driver.TaskSequenceProgress == -1 )
+                        if (werecar.Driver.TaskSequenceProgress == -1)
                         {
                             //Vector3 Destination = werecar.Position;
-                            if(werecar.Velocity.Length() < 3f)
+                            if (werecar.Velocity.Length() < 3f)
                             {
 
                                 TaskSequence seq = new TaskSequence();
@@ -2390,7 +3248,7 @@ Flags from decompiled scripts:
 
         //DrawLine(origin, cast.HitCoords);
         //DrawLine(origin, castleft.HitCoords);
-       // DrawLine(origin, castright.HitCoords);
+        // DrawLine(origin, castright.HitCoords);
         if ((cast.DitHitAnything && Math.Abs(cast.SurfaceNormal.Z) < 0.3)
             || (castleft.DitHitAnything && Math.Abs(castleft.SurfaceNormal.Z) < 0.3)
             || (castright.DitHitAnything && Math.Abs(castright.SurfaceNormal.Z) < 0.3))
@@ -2404,7 +3262,7 @@ Flags from decompiled scripts:
     }
     public static void ReplaceVehicle(Vehicle v, Model target, bool tuning)
     {
-         if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Replacing"+v.DisplayName +" with "+target.ToString());
+        if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Replacing" + v.DisplayName + " with " + target.ToString());
 
         //LivelyWorld.BlacklistedModels.Add(v.Model.ToString());
         if (CanWeUse(v))
@@ -2418,7 +3276,7 @@ Flags from decompiled scripts:
 
             if (CanWeUse(possibletrailer))
             {
-                 if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - truck had trailer");
+                if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - truck had trailer");
 
                 Function.Call(Hash.DETACH_VEHICLE_FROM_TRAILER, v);
                 possibletrailer.IsPersistent = true;
@@ -2431,13 +3289,13 @@ Flags from decompiled scripts:
 
             if (LivelyWorld.CanWeUse(veh))
             {
-                 if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - replacer car created");
+                if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - replacer car created");
 
                 veh.Speed = speed;
 
                 if (!veh.CurrentBlip.Exists() && LivelyWorld.DebugBlips)
                 {
-                     if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - adding blip");
+                    if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - adding blip");
 
                     veh.AddBlip();
                     veh.CurrentBlip.Sprite = BlipSprite.PersonalVehicleCar;
@@ -2447,7 +3305,7 @@ Flags from decompiled scripts:
                     veh.CurrentBlip.Name = veh.FriendlyName;
                 }
 
-                if (tuning) LivelyWorld.RandomTuning(veh, LivelyWorld.IsNightTime(), false);
+                if (tuning) LivelyWorld.RandomTuning(veh, true, false, true, LivelyWorld.IsNightTime(), false);
                 //LivelyWorld.ReplacerTime = Game.GameTime + 30000;
 
 
@@ -2455,7 +3313,7 @@ Flags from decompiled scripts:
                 else
                     if (HadDriver)
                 {
-                     if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - creating driver for it");
+                    if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - creating driver for it");
 
                     veh.CreateRandomPedOnSeat(VehicleSeat.Driver);
                     veh.Driver.IsPersistent = false;
@@ -2465,7 +3323,7 @@ Flags from decompiled scripts:
 
                 if (LivelyWorld.CanWeUse(possibletrailer))
                 {
-                     if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - arraching trailer to new car");
+                    if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - arraching trailer to new car");
 
                     Function.Call(GTA.Native.Hash.ATTACH_VEHICLE_TO_TRAILER, veh, possibletrailer, 10);
 
@@ -2478,7 +3336,7 @@ Flags from decompiled scripts:
             }
 
         }
-       
+
     }
     public static bool IsInNamedArea(Entity e, string name)
     {
@@ -2528,14 +3386,14 @@ Flags from decompiled scripts:
             {
                 foreach (Vehicle ptrailer in World.GetNearbyVehicles(veh.Position + (veh.ForwardVector * -5), 20f))
                 {
-                   
-                    if (ptrailer.Model == trailermodel || ptrailer.Model.Hash == Game.GenerateHash(trailermodel.ToString())) { return ptrailer; } 
+
+                    if (ptrailer.Model == trailermodel || ptrailer.Model.Hash == Game.GenerateHash(trailermodel.ToString())) { return ptrailer; }
                 }
                 if (!CanWeUse(trailer))
                 {
                     foreach (Vehicle ptrailer in World.GetNearbyVehicles(veh.Position + (veh.ForwardVector * -5), 20f))
                     {
-                        if (Function.Call<bool>(GTA.Native.Hash.IS_VEHICLE_ATTACHED_TO_TRAILER, ptrailer) && ptrailer.Model== trailermodel) { return ptrailer; }
+                        if (Function.Call<bool>(GTA.Native.Hash.IS_VEHICLE_ATTACHED_TO_TRAILER, ptrailer) && ptrailer.Model == trailermodel) { return ptrailer; }
                     }
                 }
             }
@@ -2557,18 +3415,18 @@ Flags from decompiled scripts:
 
     public static Vector3 GetQuietPlace()
     {
-         if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - QuietPlace requested");
+        if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - QuietPlace requested");
 
-        Vector3 pos =Vector3.Zero;
-        int patience =0;
-        while (patience < 20 && pos==Vector3.Zero)
+        Vector3 pos = Vector3.Zero;
+        int patience = 0;
+        while (patience < 20 && pos == Vector3.Zero)
         {
             patience++;
-            Vector3 temp = GenerateSpawnPos(World.GetSafeCoordForPed(Game.Player.Character.Position.Around(150f),false),Nodetype.Offroad,false);
+            Vector3 temp = GenerateSpawnPos(World.GetSafeCoordForPed(Game.Player.Character.Position.Around(150f), false), Nodetype.Offroad, false);
             if (World.GetNearbyPeds(temp, 20f).Length < 2 && GenerateSpawnPos(temp, Nodetype.Road, false).DistanceTo(temp) > 50f)
             {
 
-                return pos=temp;
+                return pos = temp;
                 //pos = World.GetSafeCoordForPed(temp.Around(20), true);
                 //if(pos==Vector3.Zero) pos = temp;
             }
@@ -2580,33 +3438,33 @@ Flags from decompiled scripts:
     void SpawnDrugDeal(bool gang)
     {
         Vector3 pos = GetQuietPlace();
-        if(pos!=Vector3.Zero)
+        if (pos != Vector3.Zero)
         {
             DrugDeals.Add(new DrugDeal(pos, gang));
-            DrugDealCooldown = Game.GameTime + (1000 * 60 * 5);
+            //   DrugDealCooldown = Game.GameTime + (1000 * 60 * 5);
         }
         else
         {
-            DrugDealCooldown = Game.GameTime + (3000);
+            //  DrugDealCooldown = Game.GameTime + (3000);
 
         }
     }
     void SpawnTaxiEvent()
     {
-         if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - SpawnTaxiEvent()");
+        if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - SpawnTaxiEvent()");
 
         Ped tdriver = null;
         Ped Hitch = null;
         Vehicle vtaxi = null;
         foreach (Vehicle taxi in AllVehicles)
         {
-            if (   !DecorExistsOn("DontInfluence", taxi) && taxi.Model == "taxi" || taxi.Model == "taxi20" || taxi.Model == "taxi21" && CanWeUse(taxi.Driver) && taxi.IsInRangeOf(Game.Player.Character.Position, InteractionRange))
+            if (!DecorExistsOn("DontInfluence", taxi) && new List<Model> { "taxi", "taxi20", "taxi21", "taxiesperanto" }.Contains(taxi.Model) && CanWeUse(taxi.Driver) && taxi.IsInRangeOf(Game.Player.Character.Position, 100f))
             {
                 vtaxi = taxi;
-                if (Debug) UI.Notify("got taxi");
+                if (Debug >= DebugLevel.Everything) UI.Notify("got taxi");
                 if (CanWeUse(taxi.Driver) && !taxi.Driver.IsPlayer && !taxi.Driver.IsPersistent)
                 {
-                    if (Debug) UI.Notify("got driver");
+                    if (Debug >= DebugLevel.Everything) UI.Notify("got driver");
                     tdriver = taxi.Driver;
 
                     if (DoesVehicleHavePassengers(taxi))
@@ -2615,7 +3473,7 @@ Flags from decompiled scripts:
                         {
                             if (ped.IsInVehicle(taxi) && ped.Handle != taxi.Driver.Handle && ped.IsHuman && !ped.IsPersistent && !ped.IsPlayer)
                             {
-                                if (Debug) UI.Notify("got hitch");
+                                if (Debug >= DebugLevel.Everything) UI.Notify("got hitch");
                                 Hitch = ped;
                                 break;
                             }
@@ -2628,7 +3486,7 @@ Flags from decompiled scripts:
                         {
                             if (ped.IsOnFoot && ped.IsAlive && ped.Handle != taxi.Driver.Handle && ped.IsHuman && !ped.IsPersistent && !ped.IsPlayer)
                             {
-                                if (Debug) UI.Notify("got hitch");
+                                if (Debug >= DebugLevel.Everything) UI.Notify("got hitch");
                                 Hitch = ped;
                                 break;
                             }
@@ -2642,23 +3500,24 @@ Flags from decompiled scripts:
         {
             Taxis.Add(new TaxiEvent(Hitch, tdriver, vtaxi));
             TaxigCooldown = Game.GameTime + 50000;
+            ScenarioFlow.Add(ScenarioType.Taxi);
 
         }
     }
     void ResprayTruck(Vehicle veh)
     {
-         if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - ResprayTruck() "+veh.DisplayName);
+        if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - ResprayTruck() " + veh.DisplayName);
 
         if (CanWeUse(veh))
         {
             if ((veh.Model == "mule" || veh.Model == "mule2"))
             {
-                if (veh.IsExtraOn(2)) if(RandomInt(0,10)<=5) veh.PrimaryColor = VehicleColor.WornGreen; else veh.PrimaryColor = VehicleColor.WornWhite;
+                if (veh.IsExtraOn(2)) if (RandomInt(0, 10) <= 5) veh.PrimaryColor = VehicleColor.WornGreen; else veh.PrimaryColor = VehicleColor.WornWhite;
                 else if (veh.IsExtraOn(3)) veh.PrimaryColor = VehicleColor.MetallicFormulaRed;
                 else if (veh.IsExtraOn(4)) veh.PrimaryColor = VehicleColor.MetallicGoldenBrown;
                 else if (veh.IsExtraOn(6)) veh.PrimaryColor = VehicleColor.MetallicGoldenBrown;
                 else if (veh.IsExtraOn(7)) veh.PrimaryColor = VehicleColor.BrushedGold;
-                if (Debug) UI.Notify("~b~resprayed Mule to "+veh.PrimaryColor.ToString());
+                if (Debug >= DebugLevel.Everything) UI.Notify("~b~resprayed Mule to " + veh.PrimaryColor.ToString());
 
             }
 
@@ -2666,7 +3525,7 @@ Flags from decompiled scripts:
             {
                 if (veh.IsExtraOn(1)) veh.PrimaryColor = VehicleColor.MetallicFrostWhite;
                 else if (veh.IsExtraOn(2)) veh.PrimaryColor = VehicleColor.MetallicRaceYellow;
-                if (Debug) UI.Notify("~b~resprayed Pounder to " + veh.PrimaryColor.ToString());
+                if (Debug >= DebugLevel.Everything) UI.Notify("~b~resprayed Pounder to " + veh.PrimaryColor.ToString());
 
             }
             if (veh.Model == "benson")
@@ -2679,16 +3538,16 @@ Flags from decompiled scripts:
                 else if (veh.IsExtraOn(5)) veh.PrimaryColor = VehicleColor.MetallicGreen;
                 else if (veh.IsExtraOn(6)) veh.PrimaryColor = VehicleColor.MetallicFrostWhite;
                 else if (veh.IsExtraOn(7)) veh.PrimaryColor = VehicleColor.MetallicFrostWhite;
-                if (Debug) UI.Notify("~b~Resprayed Benson to " + veh.PrimaryColor.ToString());
+                if (Debug >= DebugLevel.Everything) UI.Notify("~b~Resprayed Benson to " + veh.PrimaryColor.ToString());
 
             }
-            if (veh.Model == "packer" || veh.Model == "hauler" || veh.Model == "phantom" || veh.Model=="roadkiller")
+            if (veh.Model == "packer" || veh.Model == "hauler" || veh.Model == "phantom" || veh.Model == "roadkiller")
             {
 
-                if (Debug) UI.Notify("found " + veh.FriendlyName);
+                if (Debug >= DebugLevel.Everything) UI.Notify("found " + veh.FriendlyName);
                 if (Function.Call<bool>(Hash.IS_VEHICLE_ATTACHED_TO_TRAILER, veh))
                 {
-                    if (Debug) UI.Notify("has trailer");
+                    if (Debug >= DebugLevel.Everything) UI.Notify("has trailer");
                     Vehicle vehtrailer = null;
 
                     vehtrailer = GetTrailer(veh);
@@ -2701,29 +3560,29 @@ Flags from decompiled scripts:
 
                     if (CanWeUse(vehtrailer))
                     {
-                        if (Debug) UI.Notify("correct trailer model");
+                        if (Debug >= DebugLevel.Everything) UI.Notify("correct trailer model");
                         if ((VehicleHash)vehtrailer.Model.Hash == VehicleHash.Tanker || (VehicleHash)vehtrailer.Model.Hash == VehicleHash.Tanker2) veh.PrimaryColor = VehicleColor.Orange;
                         if (vehtrailer.LiveryCount > 0)
                         {
-                            if (Debug) UI.Notify("~g~changed color");
+                            if (Debug >= DebugLevel.Everything) UI.Notify("~g~changed color");
                             switch (vehtrailer.Livery)
                             {
                                 case 0:
                                     {
-                                        if (Debug) UI.Notify("~g~gold");
+                                        if (Debug >= DebugLevel.Everything) UI.Notify("~g~gold");
                                         veh.PrimaryColor = VehicleColor.PureGold;
                                         break;
                                     }
                                 case 2:
                                     {
-                                        if (Debug) UI.Notify("~g~yellow");
+                                        if (Debug >= DebugLevel.Everything) UI.Notify("~g~yellow");
                                         veh.PrimaryColor = VehicleColor.MetallicTaxiYellow;
 
                                         break;
                                     }
                                 case 3:
                                     {
-                                        if (Debug) UI.Notify("~g~red");
+                                        if (Debug >= DebugLevel.Everything) UI.Notify("~g~red");
 
                                         veh.PrimaryColor = VehicleColor.MetallicBlazeRed;
                                         break;
@@ -2745,68 +3604,103 @@ Flags from decompiled scripts:
 
     void Scenarios()
     {
+        if (CurrentlyAllowedScenarios.Count() == 0) return;
+        if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("AmbientSmallEvents()");
 
-        if (Debug) UI.Notify("AmbientSmallEvents()");
 
-
-         if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Scenarios() ");
+        if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Scenarios() ");
 
         //Interaction Events
-        int randomselector = RandomInt(1, 5);
+        List<ScenarioType> TempScenarioList = CurrentlyAllowedScenarios;
+        if (TempScenarioList.Contains(ScenarioType.BarnFinds)) TempScenarioList.Remove(ScenarioType.BarnFinds);
+        if (TempScenarioList.Contains(ScenarioType.ImprovedFlatbeds)) TempScenarioList.Remove(ScenarioType.ImprovedFlatbeds);
+        if (TempScenarioList.Contains(ScenarioType.ImprovedFreight)) TempScenarioList.Remove(ScenarioType.ImprovedFreight);
+        if (TempScenarioList.Contains(ScenarioType.ImprovedTowtrucks)) TempScenarioList.Remove(ScenarioType.ImprovedTowtrucks);
+        if (TempScenarioList.Contains(ScenarioType.AmbientTuner)) TempScenarioList.Remove(ScenarioType.AmbientTuner);
+        if (TempScenarioList.Contains(ScenarioType.PlayerCoolCarPhoto)) TempScenarioList.Remove(ScenarioType.PlayerCoolCarPhoto);
 
-        switch (randomselector)
+        if (TempScenarioList.Count == 0) return;
+        ScenarioType ScenarioSelector = TempScenarioList[RandomInt(0, TempScenarioList.Count - 1)];
+
+        if (ForcedScenario > -1)
         {
+            ScenarioSelector = (ScenarioType)ForcedScenario;
+            if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~g~Forced Scenario: ~b~" + ScenarioSelector.ToString());
 
-            case 1: //PedRushing
+        }
+        else
+        {
+            if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Chosen Scenario: ~b~" + ScenarioSelector.ToString());
+        }
+
+
+        if (ScenarioFlow.Contains(ScenarioSelector))
+        {
+            if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~o~Cancelled, already done recently");
+            return;
+        }
+        switch (ScenarioSelector)
+        {
+            default:
                 {
-                    if (Debug) UI.Notify("Trying PedRushing");
-                     if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - PedRushing");
+                    SmallEventCooldownTime = Game.GameTime + 500;
+                    if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~y~Wrong scenario selected, retrying");
+                    return;
+                }
+            case ScenarioType.DriverRushing: //PedRushing
+                {
+                    if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Trying PedRushing");
+                    if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - PedRushing");
 
-                    if (!DisabledEvents.Contains(EventType.DriverRushing))
+                    if (!DisabledScenarios.Contains(ScenarioType.DriverRushing))
                     {
-                        if ( Game.GameTime > PedRushingCooldown)
+                        if (Game.GameTime > PedRushingCooldown)
                         {
-
-                        foreach (Vehicle veh in AllVehicles)
-                        {
-                            if (CanWeUse(veh) && !DecorExistsOn("DontInfluence", veh) && veh.EngineRunning && !isCopVehicleRange(veh.Position, 5f) && !BlacklistedVehicles.Contains(veh) && !veh.IsPersistent && !LastDriverIsPed(veh, Game.Player.Character))
+                            foreach (Vehicle veh in AllVehicles)
                             {
-                                if (CanWeUse(veh.Driver) && !veh.Driver.IsPersistent && !veh.Driver.IsInCombat)
+                                if (CanWeUse(veh) && veh.IsInRangeOf(Game.Player.Character.Position, 40f) && WouldPlayerNoticeChangesHere(veh.Position) && !DecorExistsOn("DontInfluence", veh) &&
+                                        veh.EngineRunning && !isCopVehicleRange(veh.Position, 5f) && !BlacklistedVehicles.Contains(veh) && !veh.IsPersistent)
                                 {
-                                     if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - correct");
-
-                                    if (Debug) UI.Notify("~b~Driver rushing triggered");
-                                    Ped ped = veh.Driver;
-                                    ped.Task.ClearAll();
-                                    ped.MaxDrivingSpeed = 120f;
-                                    ped.AlwaysKeepTask = true;
-                                    Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, ped, veh, 60f, 1 + 2 + 4 + 8 + 16 + 32);
-
-                                    if (DebugBlips && !ped.CurrentBlip.Exists())
+                                    if (CanWeUse(veh.Driver) && !veh.Driver.IsPlayer && !veh.Driver.IsPersistent && !veh.Driver.IsInCombat)
                                     {
-                                        ped.AddBlip();
-                                        ped.CurrentBlip.Color = BlipColor.Yellow;
-                                        ped.CurrentBlip.Scale = 0.7f;
-                                        ped.CurrentBlip.IsShortRange = true;
+                                        if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - correct");
+
+                                        if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~b~Driver rushing triggered");
+                                        Ped ped = veh.Driver;
+                                        ped.Task.ClearAll();
+                                        ped.DrivingSpeed = 120f;
+                                        ped.AlwaysKeepTask = true;
+                                        Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, ped, veh, 60f, 1 + 2 + 4 + 8 + 16 + 32);
+
+                                        if (DebugBlips && !ped.CurrentBlip.Exists())
+                                        {
+                                            ped.AddBlip();
+                                            ped.CurrentBlip.Color = BlipColor.Yellow;
+                                            ped.CurrentBlip.Scale = 0.7f;
+                                            ped.CurrentBlip.IsShortRange = true;
+                                        }
+                                        PedRushingCooldown = Game.GameTime + (RandomInt(40, 120) * 1000);
+                                        //BlacklistedEvents.Add(EventType.DriverRushing);
+                                        BlacklistedVehicles.Add(veh);
+                                        ped.IsPersistent = true;
+                                        TemporalPersistence.Add(ped);
+                                        ScenarioFlow.Add(ScenarioType.DriverRushing);
+                                        break;
                                     }
-                                    PedRushingCooldown = Game.GameTime + (RandomInt(40, 120) * 1000);
-                                    //BlacklistedEvents.Add(EventType.DriverRushing);
-                                    BlacklistedVehicles.Add(veh);
-                                    return;
                                 }
                             }
                         }
-                        }
-                        if (Debug) UI.Notify("~o~PedRushing is on cooldown (" + (Game.GameTime - PedRushingCooldown) / 1000 + "s)");
+                        if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~o~PedRushing is on cooldown (" + (Game.GameTime - PedRushingCooldown) / 1000 + "s)");
                     }
-                    else if (Debug) UI.Notify("~o~PedRushing event is disabled."); 
+                    else if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~o~PedRushing event is disabled.");
                     break;
                 }
-            case 2: //Taxi
+            case ScenarioType.Taxi: //Taxi
                 {
-                    if (Debug) UI.Notify("Trying Taxi");
-                     if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Taxi scenario");
-                    if (!DisabledEvents.Contains(EventType.Taxi))
+                    if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Trying Taxi");
+                    if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Taxi scenario");
+
+                    if (!DisabledScenarios.Contains(ScenarioType.Taxi))
                     {
                         if (TaxigCooldown < Game.GameTime)
                         {
@@ -2814,194 +3708,176 @@ Flags from decompiled scripts:
                         }
                         else
                         {
-                            if (Debug) UI.Notify("~o~Taxi is on cooldown (" + (Game.GameTime - TaxigCooldown) / 1000 + "s)");
+                            if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~o~Taxi is on cooldown (" + (Game.GameTime - TaxigCooldown) / 1000 + "s)");
                         }
                     }
-                    else if (Debug) UI.Notify("~o~Taxi event is disabled.");
+                    else if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~o~Taxi event is disabled.");
+
+
                     break;
                 }
-            case 3: //DrivingOut / Interaction
+            case ScenarioType.VehicleInteraction: //DrivingOut / Interaction
                 {
-                    if (Debug) UI.Notify("Trying car interaction");
-                     if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - car interaction");
-                    if (!DisabledEvents.Contains(EventType.VehicleInteraction))
+                    if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Trying car interaction");
+                    if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - car interaction");
+                    if (!DisabledScenarios.Contains(ScenarioType.VehicleInteraction))
                     {
                         if (CarInteractionCooldown < Game.GameTime)
                         {
+                            List<Vehicle> DriveOut = new List<Vehicle>();
+                            List<Vehicle> VehicleScenario = new List<Vehicle>();
+                            List<Vehicle> Pullover = new List<Vehicle>();
                             foreach (Vehicle veh in AllVehicles)
                             {
-                                
-                                if(RandomInt(0, 10) <= 10)
+                                if (!IsSuitableForPlayerToExperience(veh.Position, 50f)) continue;
+                                if (RandomInt(0, 10) <= 10)
                                 {
-                                    if(CanWeUse(veh) && !BlacklistedVehicles.Contains(veh) && veh!=Game.Player.Character.CurrentVehicle && veh.IsAlive && CanWeUse(veh.Driver) && veh.Driver.IsAlive && !veh.Driver.IsInCombat && veh.IsInRangeOf(Game.Player.Character.Position, InteractionRange))
+                                    if (CanWeUse(veh) && CanWeUse(veh.Driver) && !veh.IsAttached() && veh.Speed > 20 && WouldPlayerNoticeChangesHere(veh.Position) && !BlacklistedVehicles.Contains(veh) && veh != Game.Player.Character.CurrentVehicle &&
+                                        veh.IsAlive && veh.Driver.IsAlive && !veh.Driver.IsInCombat)
                                     {
-                                        veh.Driver.IsPersistent = true;
-                                        TemporalPersistence.Add(veh.Driver);
-                                        TemporalPullover(veh.Driver);
-                                      if(Debug)  UI.Notify("pullover " + veh.FriendlyName);
-                                        BlacklistedVehicles.Add(veh);
+                                        Pullover.Add(veh);
                                     }
-                                    return;
+                                    //     return;
                                 }
-                                if (CanWeUse(veh) && !DecorExistsOn("DontInfluence", veh) && Function.Call<bool>(Hash.IS_ENTITY_OCCLUDED, veh) && veh.IsAlive && !veh.EngineRunning && veh.IsStopped && !CanWeUse(veh.Driver) && veh.ClassType != VehicleClass.Emergency && veh.IsInRangeOf(Game.Player.Character.Position, InteractionRange) && 
-                                    !veh.IsPersistent && !LastDriverIsPed(veh,Game.Player.Character) && !BlacklistedVehicles.Contains(veh))
+                                if (CanWeUse(veh) && !DecorExistsOn("DontInfluence", veh) && Function.Call<bool>(Hash.IS_ENTITY_OCCLUDED, veh) && veh.IsAlive && !veh.EngineRunning && veh.IsStopped && !CanWeUse(veh.Driver) && veh.ClassType != VehicleClass.Emergency && veh.IsInRangeOf(Game.Player.Character.Position, 80f) &&
+                                    !veh.IsPersistent && !LastDriverIsPed(veh, Game.Player.Character) && !BlacklistedVehicles.Contains(veh))
                                 {
-                                    if (RandomInt(0, 10) <= 5) //Spawn Interaction
+
+                                    if (veh.Model.IsCar && !WouldPlayerNoticeChangesHere(veh.Position))
                                     {
-                                        if (veh.Model.IsCar && !WouldPlayerNoticeChangesHere(veh.Position))
-                                        {
-                                            Ped ped = World.CreateRandomPed(veh.Position.Around(10));
-                                            TemporalPersistence.Add(ped);
-
-                                            ped.AlwaysKeepTask = true;
-                                            veh.IsPersistent = true;
-                                            veh.LockStatus = VehicleLockStatus.Unlocked;
-                                            veh.NeedsToBeHotwired = false;
-                                            TemporalPersistence.Add(veh);
-
-                                            ped.SetNoCollision(veh, true);
-                                            veh.SetNoCollision(ped, true);
-
-                                            if (CanWeUse(veh) && CanWeUse(ped))
-                                            {
-                                                BlacklistedVehicles.Add(veh);
-                                                CarInteractionCooldown = Game.GameTime + 30000;//BlacklistedEvents.Add(EventType.VehicleInteraction);
-                                                Script.Wait(500);
-                                                SpawnCarInteraction(veh, ped);
-                                                return;
-                                            }
-                                        }
+                                        DriveOut.Add(veh);
                                     }
                                     else if (veh.Model.IsCar) //Driving out
                                     {
-                                        foreach (Ped ped in World.GetNearbyPeds(veh.Position, 30f))
-                                        {
-                                            if (ped.IsHuman && ped.IsAlive && !ped.IsPersistent && !ped.IsPlayer && ped.IsOnFoot && !ped.IsInCombat)
-                                            {
-                                                if (Debug) UI.Notify("~b~Ped driving out triggered");
-                                                ped.AlwaysKeepTask = true;
-                                                veh.LockStatus = VehicleLockStatus.Unlocked;
-                                                veh.NeedsToBeHotwired = false;
-                                                TaskSequence seq = new TaskSequence();
-                                                Function.Call(Hash.TASK_ENTER_VEHICLE, 0, veh, 20000, -1, 1f, 1, 0);
-                                                Function.Call(Hash.TASK_PAUSE, 0, RandomInt(2, 4) * 1000);
-                                                Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, 0, veh, 30f, 1 + 2 + 4 + 8 + 16 + 32+128);
-                                                seq.Close();
-                                                ped.Task.PerformSequence(seq);
-                                                seq.Dispose();
-                                                ped.BlockPermanentEvents = false;
-
-                                                if (DebugBlips && !ped.CurrentBlip.Exists())
-                                                {
-                                                    ped.AddBlip();
-                                                    ped.CurrentBlip.Color = BlipColor.Green;
-                                                    ped.CurrentBlip.Scale = 0.7f;
-                                                    ped.CurrentBlip.IsShortRange = true;
-                                                    ped.CurrentBlip.Name = "Car interaction (driving out)";
-                                                }
-                                                CarInteractionCooldown = Game.GameTime + 3000;// BlacklistedEvents.Add(EventType.PedDrivingOut);
-                                                BlacklistedVehicles.Add(veh);
-                                                return;
-                                            }
-                                        }
+                                        VehicleScenario.Add(veh);
                                     }
                                 }
                             }
-                        }
-                        else if (Debug) UI.Notify("~o~Car interactions are on cooldown (" + (Game.GameTime - CarInteractionCooldown) / 1000 + "s)");
-                    }
-                    else if (Debug) UI.Notify("~o~Car interactions are disabled.");
-                    break;
-                }
-            case 4: //Emergency
-                {
-                    if (Debug) UI.Notify("Trying emergency");
-                     if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - emergency scenario");
 
-                    if (EmergencyRushingCooldown>Game.GameTime)
-                    {
-                        if (Debug) UI.Notify("~o~EmergencyRushing is on cooldown (" + (Game.GameTime - EmergencyRushingCooldown) / 1000 + "s)");
-                        return;
-                    }
-                    if (!DisabledEvents.Contains(EventType.EmergencyRushing))
-                    {
-                        foreach (Vehicle veh in AllVehicles)
-                        {
-                            if (!DecorExistsOn("DontInfluence", veh) && isCopVehicleRange(veh.Position, 1f) && !BlacklistedVehicles.Contains(veh) && !veh.IsPersistent && !LastDriverIsPed(veh, Game.Player.Character)) //Cop events
+                            List<Vehicle> All = new List<Vehicle>();
+                            All.AddRange(Pullover);
+                            All.AddRange(VehicleScenario);
+                            All.AddRange(DriveOut);
+                            if (All.Count == 0) break;
+                            Vehicle Protag = All[RandomInt(0, All.Count - 1)];
+
+                            if (Pullover.Contains(Protag))
                             {
-                                if (!veh.EngineRunning && veh.IsStopped)
+
+                                Protag.Driver.IsPersistent = true;
+                                TemporalPersistence.Add(Protag.Driver);
+                                TemporalPullover(Protag.Driver);
+                                if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("pullover " + Protag.FriendlyName);
+                                BlacklistedVehicles.Add(Protag);
+                                ScenarioFlow.Add(ScenarioType.VehicleInteraction);
+
+
+                                if (DebugBlips && !Protag.Driver.CurrentBlip.Exists())
                                 {
-                                    foreach (Ped ped in World.GetNearbyPeds(veh.Position, 60f))
-                                    {
-                                        if (ped.IsHuman && ped.IsAlive && !ped.IsPersistent && !ped.IsPlayer && isCopInRange(ped.Position, 1f) && ped.IsOnFoot && !ped.IsInCombat)
-                                        {
-                                            if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - correct");
-
-                                            if (Debug) UI.Notify("~b~Cop driving out triggered");
-                                            ped.IsPersistent = true;
-                                            TemporalPersistence.Add(ped);
-
-                                            ped.AlwaysKeepTask = true;
-                                            veh.LockStatus = VehicleLockStatus.Unlocked;
-                                            veh.NeedsToBeHotwired = false;
-                                            veh.SirenActive = true;
-
-                                            Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, ped, veh, 60f, 1 + 2 + 4 + 8 + 16 + 32);
-                                            if (DebugBlips && !ped.CurrentBlip.Exists())
-                                            {
-                                                ped.AddBlip();
-                                                ped.CurrentBlip.Color = BlipColor.Blue;
-                                                ped.CurrentBlip.IsFlashing = true;
-                                                ped.CurrentBlip.Scale = 0.7f;
-                                                ped.CurrentBlip.IsShortRange = true;
-                                            }
-                                            
-                                            EmergencyRushingCooldown = Game.GameTime + 50000;
-                                            BlacklistedVehicles.Add(veh);
-                                            return;
-                                        }
-                                    }
+                                    Protag.Driver.AddBlip();
+                                    Protag.Driver.CurrentBlip.Color = BlipColor.Green;
+                                    Protag.Driver.CurrentBlip.Scale = 0.7f;
+                                    Protag.Driver.CurrentBlip.IsShortRange = true;
+                                    Protag.Driver.CurrentBlip.Name = "Car interaction (pullover)";
                                 }
-                                else
+                                break;
+                            }
+                            else if (DriveOut.Contains(Protag))
+                            {
+
+                                foreach (Ped ped in World.GetNearbyPeds(Protag.Position, 30f))
                                 {
-                                    if (CanWeUse(veh.Driver) && !veh.Driver.IsPlayer && !veh.Driver.IsInCombat)
+                                    if (ped.IsHuman && ped.IsAlive && !ped.IsPersistent && !ped.IsPlayer && ped.IsOnFoot && !ped.IsInCombat)
                                     {
-                                        if (isCopInRange(veh.Driver.Position, 1f))
+                                        if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~b~Ped driving out triggered");
+                                        ped.AlwaysKeepTask = true;
+                                        Protag.LockStatus = VehicleLockStatus.Unlocked;
+                                        Protag.NeedsToBeHotwired = false;
+                                        TaskSequence seq = new TaskSequence();
+                                        Function.Call(Hash.TASK_ENTER_VEHICLE, 0, Protag, 20000, -1, 1f, 1, 0);
+                                        Function.Call(Hash.TASK_PAUSE, 0, RandomInt(2, 4) * 1000);
+                                        Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, 0, Protag, 20f, 1 + 2 + 4 + 8 + 16 + 32 + 128 + 256);
+                                        seq.Close();
+                                        ped.Task.PerformSequence(seq);
+                                        seq.Dispose();
+                                        ped.BlockPermanentEvents = false;
+
+                                        if (DebugBlips && !ped.CurrentBlip.Exists())
                                         {
-                                            if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - correct");
-
-                                            if (Debug) UI.Notify("~b~Cop rushing to emergency triggered");
-                                            Ped ped = veh.Driver;
-                                            ped.AlwaysKeepTask = true;
-                                            veh.SirenActive = true;
-                                            ped.MaxDrivingSpeed = 120f;
-                                            Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, ped, veh, 60f, 1 + 2 + 4 + 8 + 16 + 32);
-
-                                            if (DebugBlips && !ped.CurrentBlip.Exists())
-                                            {
-                                                ped.AddBlip();
-                                                ped.CurrentBlip.Color = BlipColor.Blue;
-                                                ped.CurrentBlip.IsFlashing = true;
-                                                ped.CurrentBlip.Scale = 0.7f;
-                                                ped.CurrentBlip.IsShortRange = true;
-                                            }
-                                            EmergencyRushingCooldown = Game.GameTime + 50000;
-                                            BlacklistedVehicles.Add(veh);
-                                            return;
+                                            ped.AddBlip();
+                                            ped.CurrentBlip.Color = BlipColor.Green;
+                                            ped.CurrentBlip.Scale = 0.7f;
+                                            ped.CurrentBlip.IsShortRange = true;
+                                            ped.CurrentBlip.Name = "Car interaction (driving out)";
                                         }
+                                        CarInteractionCooldown = Game.GameTime + 3000;// BlacklistedEvents.Add(EventType.PedDrivingOut);
+                                        BlacklistedVehicles.Add(Protag);
+                                        ScenarioFlow.Add(ScenarioType.VehicleInteraction);
+                                        break;
+
                                     }
                                 }
                             }
-                        }
-                    }
-                    else if (Debug) UI.Notify("~o~EmergencyRushing is disabled.");
-                    break;
-                }
-            case 5:
-                {
+                            else if (VehicleScenario.Contains(Protag))
+                            {
+                                Ped ped = World.CreateRandomPed(Protag.Position.Around(10));
+                                TemporalPersistence.Add(ped);
 
+                                ped.AlwaysKeepTask = true;
+                                Protag.IsPersistent = true;
+                                Protag.LockStatus = VehicleLockStatus.Unlocked;
+                                Protag.NeedsToBeHotwired = false;
+                                TemporalPersistence.Add(Protag);
+
+                                ped.SetNoCollision(Protag, true);
+                                Protag.SetNoCollision(ped, true);
+
+                                if (CanWeUse(Protag) && CanWeUse(ped))
+                                {
+
+                                    if (DebugBlips && !ped.CurrentBlip.Exists())
+                                    {
+                                        ped.AddBlip();
+                                        ped.CurrentBlip.Color = BlipColor.Green;
+                                        ped.CurrentBlip.Scale = 0.7f;
+                                        ped.CurrentBlip.IsShortRange = true;
+                                        ped.CurrentBlip.Name = "Car interaction (Scenario)";
+                                    }
+                                    BlacklistedVehicles.Add(Protag);
+                                    CarInteractionCooldown = Game.GameTime + 30000;//BlacklistedEvents.Add(EventType.VehicleInteraction);
+                                    Script.Wait(500);
+                                    SpawnCarInteraction(Protag, ped);
+                                    ScenarioFlow.Add(ScenarioType.VehicleInteraction);
+
+                                    break;
+                                }
+                            }
+                        }
+                        else if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~o~Car interactions are on cooldown (" + (Game.GameTime - CarInteractionCooldown) / 1000 + "s)");
+                    }
+                    else if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~o~Car interactions are disabled.");
                     break;
                 }
+            case ScenarioType.AnimalTrophies:
+                {
+                    if (!DisabledScenarios.Contains(ScenarioType.AnimalTrophies))
+                    {
+                        if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~b~Spawning trophy");
+                        SpawnAnimalTrophy();
+                    }
+                    break;
+                }
+
+        }
+        if (!ScenarioFlow.Contains(ScenarioSelector))
+        {
+
+            SmallEventCooldownTime = Game.GameTime + 2000;
+            if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~o~" + ScenarioSelector.ToString() + " did not spawn.");
+        }
+        else
+        {
+            if (ForcedScenario != -1) ForcedScenario = -1;
         }
     }
 
@@ -3010,7 +3886,7 @@ Flags from decompiled scripts:
         if (!CanWeUse(veh)) return false;
 
         Ped ped = Function.Call<Ped>(Hash.GET_LAST_PED_IN_VEHICLE_SEAT, veh, -1);
-        if(CanWeUse(ped) && CanWeUse(p))
+        if (CanWeUse(ped) && CanWeUse(p))
         {
             if (ped.Handle == p.Handle) return true;
         }
@@ -3056,7 +3932,7 @@ Flags from decompiled scripts:
         {
             if (CanWeUse(veh) && veh.Speed > 5f && CanWeUse(veh.GetPedOnSeat(VehicleSeat.Driver)) && veh.Speed > 20f && veh.GetPedOnSeat(VehicleSeat.Driver).Handle != PlayerPed().Handle)
             {
-                if (Debug) UI.Notify("Causing accident to " + veh.FriendlyName);
+                if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Causing accident to " + veh.FriendlyName);
                 veh.ApplyForceRelative(new Vector3(0f, 2f, 0f), new Vector3(0f, 0f, 1f));
                 Function.Call(Hash.SET_VEHICLE_REDUCE_GRIP, veh, true);
                 Script.Wait(500);
@@ -3067,7 +3943,7 @@ Flags from decompiled scripts:
     }
     bool IsRaining()
     {
-         if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - IsRaining()");
+        if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - IsRaining()");
 
         int weather = Function.Call<int>(GTA.Native.Hash._0x564B884A05EC45A3); //get current weather hash
         switch (weather)
@@ -3112,46 +3988,163 @@ Flags from decompiled scripts:
         return false;
     }
     public static bool IsNightTime()
-    {        
+    {
 
         int hour = Function.Call<int>(Hash.GET_CLOCK_HOURS);
         return (hour > 20 || hour < 7);
     }
 
 
-    int GangDrivebyCooldown = Game.GameTime+40000;
-    int HunterCooldown = Game.GameTime + 40000;
-    int SpawnEmegencyRushingCooldown = Game.GameTime + 30000;
-    int DrugDealCooldown = Game.GameTime + 120000;
-    int AnimalTrophyCooldown = Game.GameTime + 4000;
-    int RacerCooldown = Game.GameTime + 300000;
-    int BennysCooldown = Game.GameTime + 5000;
+    //int GangDrivebyCooldown = Game.GameTime+40000;
+    //int HunterCooldown = Game.GameTime + 40000;
+    //int SpawnEmegencyRushingCooldown = Game.GameTime + 30000;
+    //int DrugDealCooldown = Game.GameTime + 120000;
+    //int AnimalTrophyCooldown = Game.GameTime + 4000;
+    // int RacerCooldown = Game.GameTime + 300000;
+    //int BennysCooldown = Game.GameTime + 5000;
 
-    void HandleSpawnerEvents()
+    int ForcedEvent = -1;
+
+
+    int GameTimeRefLong = 0;
+    void HandleEvents()
     {
-         if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - HandleSpawnerEvents()");
 
-        if (Debug) UI.Notify("~b~HandleSpawnerEvents()");
+        if (CurrentlyAllowedEvents.Count == 0) return;
+        if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - HandleSpawnerEvents()");
+
+        if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~b~HandleSpawnerEvents()");
         if (RandomInt(0, 100) >= EventFrecuency)
         {
-            if (Debug) UI.Notify("~b~dice says no spawner now");
+            if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~b~dice says no spawner now");
             return;
         }
-        else if (Debug) UI.Notify("~g~dice says events will spawn");
+        else if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~g~dice says events will spawn");
 
-        int eventspawnerint = RandomInt(0, 5);
+        EventType eventspawnerint = CurrentlyAllowedEvents[RandomInt(0, CurrentlyAllowedEvents.Count - 1)];
+        if (ForcedEvent > -1)
+        {
+            eventspawnerint = (EventType)ForcedEvent;
+            UI.Notify("~g~Forced event: ~b~" + eventspawnerint.ToString());
+        }
+        else
+        {
+            if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Chosen event: ~b~" + eventspawnerint.ToString());
+        }
+        if (Eventflow.Contains(eventspawnerint))
+        {
+            if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~o~Cancelled, already done recently");
+            return;
+        }
         switch (eventspawnerint)
         {
-            case 0:
+            case EventType.EmergencyRushing:
                 {
-                    if (Debug) UI.Notify("~b~dice says driveby");
+                    //Ambient emergency rushing
+                    if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Trying emergency");
+                    if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - emergency scenario");
+
+                    if (EmergencyRushingCooldown > Game.GameTime)
+                    {
+                        if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~o~EmergencyRushing is on cooldown (" + (Game.GameTime - EmergencyRushingCooldown) / 1000 + "s)");
+                        return;
+                    }
+                    if (!DisabledEvents.Contains(EventType.EmergencyRushing))
+                    {
+                        foreach (Vehicle veh in AllVehicles)
+                        {
+                            if (!DecorExistsOn("DontInfluence", veh) && isCopVehicleRange(veh.Position, 1f) && !BlacklistedVehicles.Contains(veh) && !veh.IsPersistent && !LastDriverIsPed(veh, Game.Player.Character)) //Cop events
+                            {
+                                if (!veh.EngineRunning && veh.IsStopped)
+                                {
+                                    foreach (Ped ped in World.GetNearbyPeds(veh.Position, 60f))
+                                    {
+                                        if (ped.IsHuman && ped.IsAlive && !ped.IsPersistent && !ped.IsPlayer && isCopInRange(ped.Position, 1f) && ped.IsOnFoot && !ped.IsInCombat)
+                                        {
+                                            if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - correct");
+
+                                            if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~b~Cop driving out triggered");
+                                            ped.IsPersistent = true;
+                                            TemporalPersistence.Add(ped);
+
+                                            ped.AlwaysKeepTask = true;
+                                            veh.LockStatus = VehicleLockStatus.Unlocked;
+                                            veh.NeedsToBeHotwired = false;
+                                            veh.SirenActive = true;
+
+                                            Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, ped, veh, 60f, 1 + 2 + 4 + 8 + 16 + 32);
+                                            if (DebugBlips && !ped.CurrentBlip.Exists())
+                                            {
+                                                ped.AddBlip();
+                                                ped.CurrentBlip.Color = BlipColor.Blue;
+                                                ped.CurrentBlip.IsFlashing = true;
+                                                ped.CurrentBlip.Scale = 0.7f;
+                                                ped.CurrentBlip.IsShortRange = true;
+                                            }
+                                            ped.IsPersistent = true;
+                                            TemporalPersistence.Add(ped);
+                                            EmergencyRushingCooldown = Game.GameTime + 50000;
+                                            BlacklistedVehicles.Add(veh);
+                                            Eventflow.Add(EventType.EmergencyRushing);
+                                            return;
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    if (CanWeUse(veh.Driver) && !veh.Driver.IsPlayer && !veh.Driver.IsInCombat)
+                                    {
+                                        if (isCopInRange(veh.Driver.Position, 1f))
+                                        {
+                                            if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - correct");
+
+                                            if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~b~Cop rushing to emergency triggered");
+                                            Ped ped = veh.Driver;
+                                            ped.AlwaysKeepTask = true;
+                                            veh.SirenActive = true;
+                                            ped.MaxDrivingSpeed = 120f;
+                                            Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, ped, veh, 60f, 1 + 2 + 4 + 8 + 16 + 32);
+
+                                            if (DebugBlips && !ped.CurrentBlip.Exists())
+                                            {
+                                                ped.AddBlip();
+                                                ped.CurrentBlip.Color = BlipColor.Blue;
+                                                ped.CurrentBlip.IsFlashing = true;
+                                                ped.CurrentBlip.Scale = 0.7f;
+                                                ped.CurrentBlip.IsShortRange = true;
+                                            }
+                                            EmergencyRushingCooldown = Game.GameTime + 50000;
+                                            BlacklistedVehicles.Add(veh);
+                                            Eventflow.Add(EventType.EmergencyRushing);
+                                            return;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~o~EmergencyRushing is disabled.");
+
+                    if (!Eventflow.Contains(EventType.EmergencyRushing))
+                    {
+                        if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Failed to achieve ambient emergency, spawning one");
+                        SpawnEmergencyVehicle(EmergencyType.AMBULANCE);
+                        Eventflow.Add(EventType.EmergencyRushing);
+                    }
+                    break;
+                }
+            case EventType.GangDriveby:
+                {
+                    if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~b~dice says driveby");
                     if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Driveby");
 
                     //DriveBy
                     if (!DisabledEvents.Contains(EventType.GangDriveby))
                     {
-                        if (!IsNightTime() && GangDrivebyCooldown < Game.GameTime && Game.Player.WantedLevel == 0)
+                        if (!IsNightTime() && Game.Player.WantedLevel == 0)
                         {
+                            Eventflow.Add(EventType.GangDriveby);
+
                             switch (World.GetZoneNameLabel(Game.Player.Character.Position))
                             {
                                 case "RANCHO":
@@ -3159,7 +4152,7 @@ Flags from decompiled scripts:
                                     {
                                         BlacklistedEvents.Add(EventType.GangDriveby);
                                         Ped ped = null;
-                                        foreach (Ped p in AllPeds) if (CanWeUse(p) && p.IsAlive && p.IsHuman  && p.IsOnFoot && p.IsInRangeOf(Game.Player.Character.Position, InteractionRange)) { ped = p; break; }
+                                        foreach (Ped p in AllPeds) if (CanWeUse(p) && p.IsAlive && p.IsHuman && p.IsOnFoot && p.IsInRangeOf(Game.Player.Character.Position, 60f)) { ped = p; break; }
                                         if (CanWeUse(ped)) if (RandomInt(0, 10) <= 5) SpawnGangDriveBy(Gang.Ballas, ped); else SpawnGangDriveBy(Gang.Families, ped);
                                         break;
                                     }
@@ -3167,7 +4160,7 @@ Flags from decompiled scripts:
                                     {
                                         BlacklistedEvents.Add(EventType.GangDriveby);
                                         Ped ped = null;
-                                        foreach (Ped p in AllPeds) if (CanWeUse(p) && p.IsAlive && p.IsHuman && p.IsOnFoot && p.IsInRangeOf(Game.Player.Character.Position, InteractionRange)) { ped = p; break; }
+                                        foreach (Ped p in AllPeds) if (CanWeUse(p) && p.IsAlive && p.IsHuman && p.IsOnFoot && p.IsInRangeOf(Game.Player.Character.Position, 60f)) { ped = p; break; }
                                         if (CanWeUse(ped)) if (RandomInt(0, 10) <= 5) SpawnGangDriveBy(Gang.Vagos, ped); else SpawnGangDriveBy(Gang.Families, ped);
                                         break;
                                     }
@@ -3175,29 +4168,29 @@ Flags from decompiled scripts:
                                     {
                                         BlacklistedEvents.Add(EventType.GangDriveby);
                                         Ped ped = null;
-                                        foreach (Ped p in AllPeds) if (CanWeUse(p) && p.IsAlive && p.IsHuman && p.IsOnFoot && p.IsInRangeOf(Game.Player.Character.Position, InteractionRange)) { ped = p; break; }
+                                        foreach (Ped p in AllPeds) if (CanWeUse(p) && p.IsAlive && p.IsHuman && p.IsOnFoot && p.IsInRangeOf(Game.Player.Character.Position, 60f)) { ped = p; break; }
                                         if (CanWeUse(ped)) if (RandomInt(0, 10) <= 5) SpawnGangDriveBy(Gang.Ballas, ped); else SpawnGangDriveBy(Gang.Vagos, ped);
                                         break;
                                     }
                                 default:
                                     {
-                                        if (Debug) UI.Notify("Player is not in a valid gang activity area.");
+                                        if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Player is not in a valid gang activity area.");
                                         break;
                                     }
                             }
                         }
                     }
-                    else if (Debug) UI.Notify("~o~Gang Activity is disabled.");
+                    else if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~o~Gang Activity is disabled.");
                     break;
                 }
-            case 1:
+            case EventType.Hunter:
                 {
-                     if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Hunter/trophy");
+                    if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Hunter/trophy");
 
-                    if (Debug) UI.Notify("~b~dice says hunter/trophy");
+                    if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~b~dice says hunter/trophy");
 
                     //Hunter && Animal trophy
-                    if (!DisabledEvents.Contains(EventType.Hunter) && HunterCooldown < Game.GameTime && !IsNightTime())
+                    if (!DisabledEvents.Contains(EventType.Hunter) && !IsNightTime())
                     {
                         if (Hunters.Count == 0 &&
                         (IsInNamedArea(Game.Player.Character, "CANNY") || IsInNamedArea(Game.Player.Character, "MTJOSE") ||
@@ -3210,64 +4203,59 @@ Flags from decompiled scripts:
                         IsInNamedArea(Game.Player.Character, "CCREAK") ||
                         IsInNamedArea(Game.Player.Character, "MTCHIL")))
                         {
-                            if (Debug) UI.Notify("~b~Spawning hunter");
-                            Vector3 pos = World.GetSafeCoordForPed(Game.Player.Character.Position.Around(100), false); //GenerateSpawnPos(Game.Player.Character.Position.Around(50),Nodetype.Offroad,false)
-                            if (pos.DistanceTo(Game.Player.Character.Position) < 300)
+                            if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~b~Spawning hunter");
+                            Vector3 pos = GenerateSpawnPos(Game.Player.Character.Position.Around(100), Nodetype.Offroad, false); // World.GetSafeCoordForPed(Game.Player.Character.Position.Around(100), false); //GenerateSpawnPos(Game.Player.Character.Position.Around(50),Nodetype.Offroad,false)
+                            if (pos.DistanceTo(Game.Player.Character.Position) < 300f)
                             {
+
                                 //if (GenerateSpawnPos(pos, Nodetype.Road, false).DistanceTo(pos) < 30) pos = GenerateSpawnPos(pos, Nodetype.Offroad, false);
-                                Hunters.Add(new Hunter(pos));
-                                HunterCooldown = Game.GameTime + (1000 * 60 * RandomInt(1, 6));
+                                Hunters.Add(new Hunter(Vector3.Zero));
+                                //    HunterCooldown = Game.GameTime + (1000 * 60 * RandomInt(1, 6));
+                                Eventflow.Add(EventType.Hunter);
                             }
                         }
                     }
-
-                    if (!DisabledEvents.Contains(EventType.AnimalTrophy) && AnimalTrophyCooldown < Game.GameTime && (IsInNamedArea(Game.Player.Character, "ALAMO") || IsInNamedArea(Game.Player.Character, "PALETO") || IsInNamedArea(Game.Player.Character, "SANDY")))
-                    {
-                        if (Debug) UI.Notify("~b~Spawning trophy");
-                        SpawnAnimalTrophy();
-                    }
                     break;
                 }
-            case 2:
+            case EventType.Deal:
                 {
-                     if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Deal");
+                    if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Deal");
 
-                    if (Debug) UI.Notify("~b~dice says Deal");
+                    if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~b~dice says Deal");
 
                     //Deals
-                    if (!DisabledEvents.Contains(EventType.Deal) && DrugDealCooldown < Game.GameTime)
+                    if (!DisabledEvents.Contains(EventType.Deal))
                     {
                         NoEventsHereFar = Game.Player.Character.Position;
                         SpawnDrugDeal(IsInNamedArea(Game.Player.Character, "desrt"));
+                        Eventflow.Add(EventType.Deal);
                     }
                     break;
                 }
-            case 3:
+            case EventType.Racer:
                 {
 
-                     if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Racer");
-                    if (Debug) UI.Notify("~b~dice says Racer");
+                    if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Racer");
+                    if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~b~dice says Racer");
 
                     //Racers
-                    int BaseProb = 3;
-
-                    if (IsNightTime()) BaseProb = BaseProb + 2;
-                    if (!DisabledEvents.Contains(EventType.Racer) && RacerCooldown < Game.GameTime && Racecars.Count > 0 && IsInNamedArea(Game.Player.Character, "city") && RandomInt(0, 10) <= BaseProb)
+                    if (!DisabledEvents.Contains(EventType.Racer) && Racecars.Count > 0)
                     {
-                        if (Debug) UI.Notify("Attempting to spawn racer event...");
+                        if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Attempting to spawn racer event...");
 
-                        if (RandomInt(0, 10) >= 5)
+                        if (RandomInt(0, 10) >= 10)
                         {
-                            if (Debug) UI.Notify("Racer event will be a race between multiple cars");
+                            if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Racer event will be a race between multiple cars");
 
                             CreateRacers();
+                            Eventflow.Add(EventType.Racer);
                         }
                         else
                         {
 
                             Model model = Racecars[RandomInt(0, Racecars.Count - 1)];
                             int p = 0;
-                            while (!model.IsValid && p<5)
+                            while (!model.IsValid && p < 5)
                             {
                                 p++;
                                 model = Racecars[RandomInt(0, Racecars.Count - 1)];
@@ -3275,10 +4263,10 @@ Flags from decompiled scripts:
                             }
                             if (model.IsValid)
                             {
-                                Vehicle veh = World.CreateVehicle(model, FindHiddenSpot(50, true), RandomInt(0, 360));
+                                Vehicle veh = World.CreateVehicle(model, FindHiddenSpot(50, true, true), RandomInt(0, 360));
                                 if (CanWeUse(veh))
                                 {
-                                    RandomTuning(veh, IsNightTime(), false);
+                                    RandomTuning(veh, true, false, true, IsNightTime(), false);
                                     Ped ped = veh.CreateRandomPedOnSeat(VehicleSeat.Driver);
                                     ped.AlwaysKeepTask = true;
                                     MoveEntitytoNearestRoad(veh, true, true);
@@ -3287,12 +4275,12 @@ Flags from decompiled scripts:
                                     if (RandomInt(0, 10) >= 5)
                                     {
                                         Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, ped, veh, 10f, 1 + 2 + 8 + 32);
-                                        if (Debug) UI.Notify("Event will be a lone tuner vehicle");
+                                        if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Event will be a lone tuner vehicle");
                                     }
                                     else
                                     {
-                                        Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, ped, veh, 30f, 4 + 8 + 16 + 32 + 512);
-                                        if (Debug) UI.Notify("Event will be a lone racer");
+                                        Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, ped, veh, 30f, 1 + 2 + 4 + 8 + 16 + 32 + 512);
+                                        if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Event will be a lone racer");
                                         ped.RelationshipGroup = RacersRLGroup;
                                     }
 
@@ -3305,135 +4293,120 @@ Flags from decompiled scripts:
                                         veh.CurrentBlip.IsShortRange = true;
                                         veh.CurrentBlip.Name = "Racer";
                                     }
-                                    if (Debug) UI.Notify("Racing car spawned");
+                                    if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Racing car spawned");
 
                                     //ped.IsPersistent = false;
                                     //veh.IsPersistent = false;
                                     TemporalPersistence.Add(ped);
                                     TemporalPersistence.Add(veh);
                                     BlacklistedEvents.Add(EventType.Racer);
-                                    //SpawnerEventCooldownTime = SpawnerEventCooldownTime + 10000;
-
-                                    RacerCooldown = Game.GameTime + (1000 * 60 * 10);
-                                    return;
+                                    //EventCooldownTime = EventCooldownTime + 10000;
+                                    Eventflow.Add(EventType.Racer);
+                                    //     RacerCooldown = Game.GameTime + (1000 * 60 * 10);
+                                    break;
                                 }
                             }
                         }
-                        
+
                     }
                     break;
                 }
-            case 4:
+            case EventType.Carjacker:
                 {
-                     if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Bennys");
-
-                    if (Debug) UI.Notify("~b~dice says bennys");
-
-                    //Benny's Motorworks
-                    if (!DisabledEvents.Contains(EventType.Bennys) && BennysCooldown < Game.GameTime && Bennys.Count > 0 && Game.Player.Character.IsInRangeOf(BennysMotorworks, 200f) && !CanPedSeePos(Game.Player.Character, BennysMotorworks, true))
-                    {
-                        Model model = Bennys[RandomInt(0, Bennys.Count - 1)];
-                        if (model.IsValid)
-                        {
-                            Vehicle veh = World.CreateVehicle(Bennys[RandomInt(0, Bennys.Count)], BennysMotorworks, 0);
-                            if (CanWeUse(veh))
-                            {
-                                RandomTuning(veh, IsNightTime(), false);
-                                Ped ped = veh.CreateRandomPedOnSeat(VehicleSeat.Driver);
-                                ped.AlwaysKeepTask = true;
-
-                                Function.Call(Hash.TASK_VEHICLE_DRIVE_WANDER, ped, veh, 15f, 1 + 2 + 4 + 8 + 16 + 32);
-                                if (!veh.CurrentBlip.Exists() && DebugBlips)
-                                {
-                                    veh.AddBlip();
-                                    veh.CurrentBlip.Sprite = BlipSprite.PersonalVehicleCar;
-                                    veh.CurrentBlip.Scale = 0.7f;
-                                    veh.CurrentBlip.Color = BlipColor.Green;
-                                    veh.CurrentBlip.IsShortRange = true;
-                                    veh.CurrentBlip.Name = "Custom Vehicle";
-                                }
-                                if (Debug) UI.Notify("~b~Benny's car spawned");
-
-                                ped.IsPersistent = false;
-                                veh.IsPersistent = false;
-                                SpawnerEventCooldownTime = SpawnerEventCooldownTime + 20000;
-
-                                BennysCooldown = Game.GameTime + (1000 * 60 * 5);
-                                return;
-                            }
-                        }
-                    }
-                    break;
-                }
-            case 5:
-                {
-
+                    CarjackerEnabled = true;
                     break;
                 }
         }
-                                  
+
+        if (!Eventflow.Contains(eventspawnerint))
+        {
+            if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~o~" + eventspawnerint.ToString() + "did not spawn.");
+            EventCooldownTime = Game.GameTime + 3000;
+        }
+        else
+        {
+            if (ForcedEvent != -1) ForcedEvent = -1;
+        }
+    }
+
+    public static Vector3 GetOffset(Entity reference, Entity ent)
+    {
+
+        Vector3 pos = ent.Position;
+        return Function.Call<Vector3>(Hash.GET_OFFSET_FROM_ENTITY_GIVEN_WORLD_COORDS, reference, pos.X, pos.Y, pos.Z);
+
+    }
+    void AddScenarioProbMultipliers()
+    {
+
         int Random = RandomInt(0, 100);
-        int accident = AccidentEventProb;
-        int criminal = CriminalEventProb;
-        int tow = 20;
+        EmergencyScore = AccidentEventProb;
+        Crimescore = CriminalEventProb;
 
         if (IsRaining())
         {
-            accident = +30;
-            tow = +20;
+            EmergencyScore = +30;
         }
-        if (IsNightTime()) criminal = +30;
+        if (IsNightTime() || GangAreas.Contains(World.GetZoneNameLabel(Game.Player.Character.Position))) Crimescore = +30;
 
 
-        criminal += RandomInt((criminal * -1) / 2, criminal / 2);
-        accident += RandomInt((accident * -1) / 2, accident / 2);
-        accident += RandomInt((tow * -1) / 2, tow / 2);
+        //        Crimescore += RandomInt((Crimescore * -1) / 2, Crimescore / 2);
+        //      EmergencyScore += RandomInt((EmergencyScore * -1) / 2, EmergencyScore / 2);
 
-
-        if (tow > Random )
+        //If the 0-100 dice allows it, double their likeliness. Else, completely remove them, to make sure they're not common
+        if (Crimescore > Random)
         {
-             if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - SpawnTow()");
+            if (CurrentlyAllowedEvents.Contains(EventType.Carjacker)) CurrentlyAllowedEvents.Add(EventType.Carjacker);
+            if (CurrentlyAllowedEvents.Contains(EventType.Deal)) CurrentlyAllowedEvents.Add(EventType.Deal);
+            if (CurrentlyAllowedEvents.Contains(EventType.EmergencyRushing)) CurrentlyAllowedEvents.Add(EventType.EmergencyRushing);
+            if (CurrentlyAllowedEvents.Contains(EventType.GangDriveby)) CurrentlyAllowedEvents.Add(EventType.GangDriveby);
 
-            SpawnerEventCooldownTime = Game.GameTime + 20000;
-            SpawnTow();
-            return;
         }
-        if (criminal > Random)
+        else
         {
-             if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - CreateCriminalEvent()");
+            for (int i = 0; i < 5; i++)
+            {
+                if (CurrentlyAllowedEvents.Contains(EventType.EmergencyRushing)) CurrentlyAllowedEvents.Remove(EventType.EmergencyRushing);
+                if (CurrentlyAllowedEvents.Contains(EventType.Carjacker)) CurrentlyAllowedEvents.Remove(EventType.Carjacker);
+                if (CurrentlyAllowedEvents.Contains(EventType.Deal)) CurrentlyAllowedEvents.Remove(EventType.Deal);
+                if (CurrentlyAllowedEvents.Contains(EventType.EmergencyRushing)) CurrentlyAllowedEvents.Remove(EventType.EmergencyRushing);
+                if (CurrentlyAllowedEvents.Contains(EventType.GangDriveby)) CurrentlyAllowedEvents.Remove(EventType.GangDriveby);
+                if (CurrentlyAllowedEvents.Contains(EventType.Racer)) CurrentlyAllowedEvents.Remove(EventType.Racer);
 
-            SpawnerEventCooldownTime = Game.GameTime + 30000;
-            BlacklistedEvents.Add(EventType.Carjacker);
-
-            if (!DisabledEvents.Contains(EventType.Carjacker)) CreateCriminalEvent();
-
-
-            return;
+            }
         }
-        if (accident > Random)
+        if (EmergencyScore > Random)
         {
-             if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - CreateAccidentEvent()");
+            if (CurrentlyAllowedEvents.Contains(EventType.EmergencyRushing))
+            {
+                CurrentlyAllowedEvents.Add(EventType.EmergencyRushing);
+            }
+            if (CurrentlyAllowedEvents.Contains(EventType.Tow)) CurrentlyAllowedEvents.Add(EventType.Tow);
+        }
+        else
+        {
+            for (int i = 0; i < 5; i++)
+            {
+                if (CurrentlyAllowedEvents.Contains(EventType.EmergencyRushing)) CurrentlyAllowedEvents.Remove(EventType.EmergencyRushing);
+            }
 
-            SpawnerEventCooldownTime = Game.GameTime + 30000;
-            CreateAccidentEvent();
-            return;
         }
 
-        if (Debug) UI.Notify("Requirement: " + Random + "~n~criminal: " + criminal + "~n~accident: " + accident + "~n~Tow:" + tow);
+        if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Requirement: " + Random + "~n~criminal: " + Crimescore + "~n~accident: " + EmergencyScore);
+
     }
-
     void CreateCriminalEvent()
     {
-        if(Debug) UI.Notify("CreateCriminalEvent()");
-        if(RandomInt(0,10)<= 5)
+        if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("CreateCriminalEvent()");
+        if (RandomInt(0, 10) <= 5)
         {
-            if (Debug) UI.Notify("Carjacker spawned.");
+            if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Carjacker spawned.");
 
             CarjackerEnabled = true;
         }
         else
         {
-            if (Debug) UI.Notify("[Event] Busy copcar spawned.");
+            if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("[Event] Busy copcar spawned.");
             //SpawnChase(FindHiddenSpot(50,true),false);
             if (!BlacklistedEvents.Contains(EventType.EmergencyRushing))
             {
@@ -3462,7 +4435,7 @@ Flags from decompiled scripts:
 
     void SpawnChase(Vector3 pos, bool big)
     {
-        if (Debug) UI.Notify("chase spawned");
+        if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("chase spawned");
         Vehicle criminalveh;
         Ped criminalped;
 
@@ -3475,7 +4448,7 @@ Flags from decompiled scripts:
         }
         else
         {
-            criminalveh = World.CreateVehicle(RandomNormalVehicle(), FindHiddenSpot(50, true), 0f);
+            criminalveh = World.CreateVehicle(RandomNormalVehicle(), FindHiddenSpot(50, true, false), 0f);
             criminalped = Function.Call<Ped>(Hash.CREATE_RANDOM_PED_AS_DRIVER, criminalveh, true);
             PreparePed(criminalped, true);
             Function.Call(GTA.Native.Hash.TASK_VEHICLE_DRIVE_WANDER, criminalped, criminalveh, 90f, (4 + 16 + 32 + 262144));
@@ -3508,7 +4481,7 @@ Flags from decompiled scripts:
 
 
 
-    Vector3 FindHiddenSpot(float distance, bool road)
+    Vector3 FindHiddenSpot(float distance, bool road, bool AheadPlayer)
     {
         Vector3 spot = World.GetNextPositionOnStreet(PlayerPed().Position.Around(distance));
 
@@ -3520,10 +4493,14 @@ Flags from decompiled scripts:
                 RaycastResult raycast = World.Raycast(PlayerPed().Position + new Vector3(0, 0, 4), spot + new Vector3(0, 0, 4), IntersectOptions.Map);
                 if (raycast.DitHitAnything || PlayerPed().Position.DistanceTo(spot) > 100f)
                 {
-                    if (Debug) UI.Notify("[HiddenSpot] Found place, " + i + "º try");
+                    if (!AheadPlayer || IsPosAheadEntity(Game.Player.Character, spot) > 0)
+                    {
+                        if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("[HiddenSpot] Found place, " + i + "º try");
+
+                    }
                     break;
                 }
-                else if (i == 19 && Debug) UI.Notify("[HiddenSpot] ~r~Didn't find appropiate place");
+                else if (i == 19 && Debug >= DebugLevel.EventsAndScenarios) UI.Notify("[HiddenSpot] ~r~Didn't find appropiate place");
             }
             return spot;
         }
@@ -3535,10 +4512,10 @@ Flags from decompiled scripts:
                 RaycastResult raycast = World.Raycast(PlayerPed().Position, spot + new Vector3(0, 0, 1), IntersectOptions.Map);
                 if (raycast.DitHitAnything || PlayerPed().Position.DistanceTo(spot) > 100f)
                 {
-                    if (Debug) UI.Notify("[HiddenSpot] Found place, " + i + "º try");
+                    if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("[HiddenSpot] Found place, " + i + "º try");
                     break;
                 }
-                else if (i == 19 && Debug) UI.Notify("[HiddenSpot] ~r~Didn't find appropiate place");
+                else if (i == 19 && Debug >= DebugLevel.EventsAndScenarios) UI.Notify("[HiddenSpot] ~r~Didn't find appropiate place");
             }
             return spot;
         }
@@ -3548,7 +4525,7 @@ Flags from decompiled scripts:
     {
         if (!BlacklistedEvents.Contains(EventType.EmergencyRushing))
         {
-            int type = RandomInt(1, 3);
+            int type = RandomInt(1, 2);
             switch (type)
             {
                 case 1: SpawnEmergencyVehicle(EmergencyType.FIRETRUCK); break;
@@ -3563,7 +4540,7 @@ Flags from decompiled scripts:
     }
 
 
-   public static void MoveEntitytoNearestRoad(Entity E)
+    public static void MoveEntitytoNearestRoad(Entity E)
     {
         if (CanWeUse(E))
         {
@@ -3589,8 +4566,8 @@ Flags from decompiled scripts:
 
         if (Function.Call<bool>(Hash.GET_CLOSEST_VEHICLE_NODE_WITH_HEADING, E.Position.X, E.Position.Y, E.Position.Z, outArgA, outArgB, 1, 1077936128, 0))
         {
-           if(move) E.Position = outArgA.GetResult<Vector3>(); //Get position
-            if(heading) E.Heading = outArgB.GetResult<float>(); //getting heading
+            if (move) E.Position = outArgA.GetResult<Vector3>(); //Get position
+            if (heading) E.Heading = outArgB.GetResult<float>(); //getting heading
         }
     }
     Ped PlayerPed()
@@ -3616,33 +4593,35 @@ Flags from decompiled scripts:
         OutputArgument outArgA = new OutputArgument();
         OutputArgument outArgB = new OutputArgument();
 
-        Function.Call(Hash.GET_RANDOM_VEHICLE_MODEL_IN_MEMORY, true,  outArgA, outArgB);
+        Function.Call(Hash.GET_RANDOM_VEHICLE_MODEL_IN_MEMORY, true, outArgA, outArgB);
 
-        return outArgA.GetResult<string>()+ outArgB.GetResult<string>();
+        return outArgA.GetResult<string>() + outArgB.GetResult<string>();
     }
 
 
-    VehicleHash GetRandomPoliceVehicle()
+    Model GetRandomPoliceVehicle()
     {
+
+        if (CopVehicles.Count > 0) return CopVehicles[RandomInt(0, CopVehicles.Count - 1)];
         if (PlayerPed().IsInRangeOf(CityCenter, 3000))
         {
             switch (RandomInt(0, 3))
             {
                 case 0:
                     {
-                        return VehicleHash.Police;
+                        return "police";
                     }
                 case 1:
                     {
-                        return VehicleHash.Police2;
+                        return "police2";
                     }
                 case 2:
                     {
-                        return VehicleHash.Police3;
+                        return "police3";
                     }
                 case 3:
                     {
-                        return VehicleHash.Police4;
+                        return "police4";
                     }
             }
         }
@@ -3652,96 +4631,110 @@ Flags from decompiled scripts:
             {
                 case 1:
                     {
-                        return VehicleHash.Sheriff;
+                        return "sheriff";
                     }
                 case 2:
                     {
-                        return VehicleHash.Sheriff2;
+                        return "sheriff2";
                     }
             }
         }
-        return VehicleHash.Police;
+        return "police";
     }
 
     void SpawnTow()
     {
         if (!BlacklistedEvents.Contains(EventType.Tow))
         {
-             if(DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Spawning tow event");
+            if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Spawning tow event");
 
-            int patience = 0;
-            Vector3 hiddenpos = Vector3.Zero;
-
-
-            while (patience < 30 && (hiddenpos == Vector3.Zero || !WouldPlayerNoticeChangesHere(hiddenpos)))
-            {
-                hiddenpos = GenerateSpawnPos(Game.Player.Character.Position.Around(10+(patience*10)), Nodetype.Road, false);
-                patience++;
-            }
-            if (WouldPlayerNoticeChangesHere(hiddenpos) || Game.Player.Character.IsInRangeOf(hiddenpos, 20f))
-            {
-                if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Didn't find any proper hidden position for the tow.");
-                return;
-            }
-                //FindHiddenSpot(100f, true);
+            //FindHiddenSpot(100f, true);
             Vehicle tow = null;
-            foreach (Vehicle v in AllVehicles) if (!DecorExistsOn("DontInfluence", v) && v.Model == VehicleHash.TowTruck && !v.IsPersistent && !WouldPlayerNoticeChangesHere(v.Position)) { tow = v; break;}
+            foreach (Vehicle v in AllVehicles) if (!DecorExistsOn("Ignore", v) && !v.PreviouslyOwnedByPlayer && v.Model == VehicleHash.TowTruck && !v.IsPersistent && !WouldPlayerNoticeChangesHere(v.Position)) { tow = v; break; }
 
-            if(!CanWeUse(tow)) tow= World.CreateVehicle(VehicleHash.TowTruck, hiddenpos, 0);
+            if (!CanWeUse(tow))
+            {
+                int patience = 0;
+                Vector3 hiddenpos = Vector3.Zero;
+
+
+                while (patience < 30 && (hiddenpos == Vector3.Zero || !WouldPlayerNoticeChangesHere(hiddenpos)))
+                {
+                    hiddenpos = GenerateSpawnPos(Game.Player.Character.Position.Around(10 + (patience * 10)), Nodetype.Road, false);
+                    patience++;
+                }
+                if (WouldPlayerNoticeChangesHere(hiddenpos) || Game.Player.Character.IsInRangeOf(hiddenpos, 20f))
+                {
+                    if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Didn't find any proper hidden position for the tow.");
+                    return;
+                }
+                tow = World.CreateVehicle(VehicleHash.TowTruck, hiddenpos, 0);
+            }
+
+
             Ped towdriver = tow.Driver;
-            
-            if(!CanWeUse(towdriver)) towdriver=Function.Call<Ped>(Hash.CREATE_RANDOM_PED_AS_DRIVER, tow, true);
+
+            if (!CanWeUse(towdriver)) towdriver = Function.Call<Ped>(Hash.CREATE_RANDOM_PED_AS_DRIVER, tow, true);
 
             if (CanWeUse(towdriver) && CanWeUse(tow))
-        {
-            PreparePed(towdriver, false);
+            {
+                PreparePed(towdriver, false);
 
-            MoveEntitytoNearestRoad(tow, true,true);
+                MoveEntitytoNearestRoad(tow, true, true);
 
-            Script.Wait(500);
-            Function.Call(GTA.Native.Hash.TASK_VEHICLE_DRIVE_WANDER, towdriver, tow, 15f, (1 + 24 + 16 + 32 + 262144));
+                Script.Wait(500);
+                Function.Call(GTA.Native.Hash.TASK_VEHICLE_DRIVE_WANDER, towdriver, tow, 15f, (1 + 24 + 16 + 32 + 262144));
 
                 Model model = GetRandomVehicleHash();
                 if (model.Hash == tow.Model.Hash) model = "blista";
-            Vehicle towed = World.CreateVehicle(model, tow.Position + (tow.ForwardVector * -8), tow.Heading);
-            //towed.Heading = tow.Heading;
+                Vehicle towed = World.CreateVehicle(model, tow.Position + (tow.ForwardVector * -5), tow.Heading);
+                //towed.Heading = tow.Heading;
 
 
-            Function.Call(Hash.SET_VEHICLE_FORWARD_SPEED, tow, 4f);
-            Function.Call(Hash.SET_VEHICLE_FORWARD_SPEED, towed, 4f);
+                Function.Call(Hash.SET_VEHICLE_FORWARD_SPEED, tow, 4f);
+                Function.Call(Hash.SET_VEHICLE_FORWARD_SPEED, towed, 4f);
 
-            Function.Call(Hash.ATTACH_VEHICLE_TO_TOW_TRUCK, tow, towed, false, 0, 0, 0);
-            Function.Call(Hash._SET_TOW_TRUCK_CRANE_RAISED, tow, 1f);
+                Function.Call(Hash.ATTACH_VEHICLE_TO_TOW_TRUCK, tow, towed, false, 0, 0, 0);
+                Function.Call(Hash._SET_TOW_TRUCK_CRANE_RAISED, tow, 1f);
 
-            if (DebugBlips && !tow.CurrentBlip.Exists())
-            {
-                tow.AddBlip();
-                //tow.CurrentBlip.Color = BlipColor.Green;
-                tow.CurrentBlip.Sprite = BlipSprite.TowTruck;
-                tow.CurrentBlip.Scale = 0.7f;
+                if (DebugBlips && !tow.CurrentBlip.Exists())
+                {
+                    tow.AddBlip();
+                    //tow.CurrentBlip.Color = BlipColor.Green;
+                    tow.CurrentBlip.Sprite = BlipSprite.TowTruck;
+                    tow.CurrentBlip.Scale = 0.7f;
                     tow.CurrentBlip.IsShortRange = true;
 
                 }
                 tow.EngineRunning = true;
-            tow.SirenActive = true;
-            tow.IsPersistent = false;
-            towdriver.IsPersistent = false;
-            towed.IsPersistent = false;
+                tow.SirenActive = true;
+                tow.IsPersistent = false;
+                towdriver.IsPersistent = false;
+                towed.IsPersistent = false;
 
-            if (Debug) UI.Notify("Tow + vehicle spawned");
+                if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Tow + vehicle spawned");
                 BlacklistedVehicles.Add(tow);
                 BlacklistedVehicles.Add(towed);
             }
-        else
-        {
-            if (Debug) UI.Notify("Tow + vehicle failed to spawn");
+            else
+            {
+                if (Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Tow + vehicle failed to spawn");
 
-        }
+            }
             BlacklistedEvents.Add(EventType.Tow);
 
         }
     }
+    public static Ped GetOwner(Vehicle v)
+    {
+        OutputArgument Owner = new OutputArgument();
 
+        Function.Call(Hash._GET_VEHICLE_OWNER, v, Owner);
+
+        Ped Driver = Owner.GetResult<Ped>();
+
+        if (CanWeUse(Driver)) return Driver; else return null;
+    }
     public static Model GetRandomVehicleHash()
     {
         foreach (Vehicle veh in World.GetAllVehicles())
@@ -3754,26 +4747,36 @@ Flags from decompiled scripts:
     void SpawnEmergencyVehicle(EmergencyType E)
     {
 
+        List<Model> VehicleModel = new List<Model> { "police", };
 
-        int type = (int)VehicleHash.Police;
+        List<Model> Ambulances = new List<Model> { "ambulance", "ambulance2", "ambulance3" };
+        List<Model> Cops = new List<Model> { "riot", "riot2", "riot2" };
+
+        Model type = 0;// (int)VehicleHash.Police;
         switch (E)
         {
             case EmergencyType.AMBULANCE:
                 {
-                    type = (int)VehicleHash.Ambulance;
+                    VehicleModel = new List<Model> { "ambulance", "ambulance2", "ambulance3" };
+                    /// type = Ambulances[RandomInt(0, Ambulances.Count - 1)];
                     break;
                 }
             case EmergencyType.FIRETRUCK:
                 {
-                    type = (int)VehicleHash.FireTruck;
+                    VehicleModel = new List<Model> { "firetruk", "riot3", };
+
+                    // type =  (int)VehicleHash.FireTruck;
                     break;
                 }
             case EmergencyType.POLICE:
                 {
-                    type = (int)GetRandomPoliceVehicle();
+                    VehicleModel = Cops;
+                    //if (CopVehicles.Count > 0) VehicleModel = CopVehicles;
+                    //else type = GetRandomPoliceVehicle();
                     break;
                 }
         }
+        for (int patience = 0; patience < 20; patience++) if (!type.IsValid) type = VehicleModel[RandomInt(0, VehicleModel.Count - 1)];
 
         Vehicle vehicle = null;
         Ped Driver = null;
@@ -3788,14 +4791,20 @@ Flags from decompiled scripts:
         }
         if (!CanWeUse(vehicle))
         {
-            Vector3 pos = GenerateSpawnPos(Game.Player.Character.Position.Around(100), Nodetype.Road, false);
+            Vector3 pos = GenerateSpawnPos(Game.Player.Character.Position.Around(20), Nodetype.Road, false);
             int patience = 0;
-            while(patience<50 && (pos==Vector3.Zero || WouldPlayerNoticeChangesHere(pos)))
+            while (patience < 50 && (pos == Vector3.Zero || WouldPlayerNoticeChangesHere(pos)) || Game.Player.Character.IsInRangeOf(pos, 100f))
             {
                 patience++;
-                pos= GenerateSpawnPos(Game.Player.Character.Position.Around(100+(patience*2)), Nodetype.Road, false);
+                pos = GenerateSpawnPos(Game.Player.Character.Position.Around(20 + (patience * 2)), Nodetype.Road, false);
             }
             vehicle = World.CreateVehicle(type, pos, 0);
+
+
+            if (!CanWeUse(vehicle))
+            {
+                return;
+            }
         }
         if (!CanWeUse(Driver))
         {
@@ -3855,30 +4864,188 @@ Flags from decompiled scripts:
                     }
             }
         }
-        vehicle.Heading = Function.Call<float>(GTA.Native.Hash.GET_ANGLE_BETWEEN_2D_VECTORS, vehicle.Position.X, vehicle.Position.Y, Game.Player.Character.Position.X, Game.Player.Character.Position.Y);
-        MoveEntitytoNearestRoad(vehicle,true,false);
-        PreparePed(Driver, false);
-        vehicle.SirenActive = true;
-
-
-        Function.Call(GTA.Native.Hash.TASK_VEHICLE_DRIVE_WANDER, Driver, vehicle, 30f, (4 + 16 + 32 + 262144));
-        Script.Wait(200);
-        Function.Call(Hash.SET_VEHICLE_FORWARD_SPEED, vehicle, 20f);
-
-        if (DebugBlips)
+        List<int> CityLiveries = new List<int> { 4, 5, 6 };
+        List<int> BlaineLiveries = new List<int> { 3 };
+        if (CanWeUse(vehicle) && CanWeUse(Driver))
         {
-            vehicle.AddBlip();
-            vehicle.CurrentBlip.Color = BlipColor.Blue;
-            vehicle.CurrentBlip.IsFlashing = true;
-            vehicle.CurrentBlip.Scale = 0.7f;
-            vehicle.CurrentBlip.IsShortRange = true;
-            vehicle.CurrentBlip.Name = "Rushing " + vehicle.FriendlyName;
-        }
-        Driver.IsPersistent = false;
-        vehicle.IsPersistent = false;
-        SpawnerEventCooldownTime = Game.GameTime + 30000;
+            if ((vehicle.Model == "ambulance2" || vehicle.Model == "ambulance3"))
+            {
+                CityLiveries = new List<int> { 4, 5, 6 };
+                BlaineLiveries = new List<int> { 3 };
+                {
+                    if (GetMapAreaAtCoords(vehicle.Position) == "city")
+                    {
+                        vehicle.Livery = CityLiveries[RandomInt(0, CityLiveries.Count - 1)];
+                    }
+                    else
+                    {
+                        vehicle.Livery = BlaineLiveries[RandomInt(0, BlaineLiveries.Count - 1)];
+                    }
+                }
+            }
+            if ((vehicle.Model == "firetruk" || vehicle.Model == "riot3"))
+            {
+                CityLiveries = new List<int> { 2 };
+                BlaineLiveries = new List<int> { 1 };
+            }
+            if (vehicle.Model == "riot2")
+            {
+
+                vehicle.SetMod(VehicleMod.Livery, -1, false);
+                vehicle.PrimaryColor = VehicleColor.PureWhite;
+                vehicle.SecondaryColor = VehicleColor.PureWhite;
+            }
+            Vector3 Dest = World.GetNextPositionOnStreet(LerpByDistance(vehicle.Position, Game.Player.Character.Position, 300f));
+            vehicle.Heading = Function.Call<float>(GTA.Native.Hash.GET_ANGLE_BETWEEN_2D_VECTORS, vehicle.Position.X, vehicle.Position.Y, Game.Player.Character.Position.X, Game.Player.Character.Position.Y);
+            MoveEntitytoNearestRoad(vehicle, true, true);
+            PreparePed(Driver, false);
+            vehicle.SirenActive = true;
+
+
+
+
+            //if (!IsEntityAheadEntity(Game.Player.Character, vehicle)) vehicle.Heading += 180;
+            // Function.Call(GTA.Native.Hash.TASK_VEHICLE_DRIVE_WANDER, Driver, vehicle, 30f, (4 + 16 + 32 + 262144));
+            Script.Wait(200);
+            Function.Call(Hash.SET_VEHICLE_FORWARD_SPEED, vehicle, 20f);
+
+            if (DebugBlips)
+            {
+                vehicle.AddBlip();
+                vehicle.CurrentBlip.Color = BlipColor.Blue;
+                vehicle.CurrentBlip.IsFlashing = true;
+                vehicle.CurrentBlip.Scale = 0.7f;
+                vehicle.CurrentBlip.IsShortRange = true;
+                vehicle.CurrentBlip.Name = "Rushing " + vehicle.FriendlyName;
+            }
+            List<Vehicle> ToUnPersist = new List<Vehicle>();
+
+
+            ToUnPersist.Add(vehicle);
+            EventCooldownTime = Game.GameTime + EventCooldown;
             BlacklistedEvents.Add(EventType.EmergencyRushing);
-        
+            vehicle.SirenActive = true;
+            //TemporalPersistence.Add(vehicle);
+            //TemporalPersistence.Add(vehicle.Driver);
+
+
+
+            TaskSequence seq = new TaskSequence();
+
+            Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE, 0, vehicle, Dest.X, Dest.Y, Dest.Z, 30f, 4 + 8 + 16 + 32, 10f);
+            Function.Call(GTA.Native.Hash.TASK_VEHICLE_DRIVE_WANDER, 0, vehicle, 30f, (4 + 16 + 32 + 262144));
+
+            seq.Close(false);
+            vehicle.Driver.Task.PerformSequence(seq);
+            seq.Dispose();
+            List<Model> Escorts = new List<Model> { "police" };
+            int EscortLivery = -1;
+
+
+            if (E == EmergencyType.AMBULANCE || E == EmergencyType.FIRETRUCK)
+            {
+                Escorts = new List<Model> { "emsvan", "emscar", "emscar2", "emssuv" };
+                if (GetMapAreaAtCoords(vehicle.Position) == "city")
+                {
+                    EscortLivery = CityLiveries[RandomInt(0, CityLiveries.Count - 1)];
+                }
+                else
+                {
+                    EscortLivery = BlaineLiveries[RandomInt(0, BlaineLiveries.Count - 1)];
+                }
+            }
+            if (E == EmergencyType.POLICE)
+            {
+
+                if (GetMapAreaAtCoords(vehicle.Position) == "city")
+                {
+                    Escorts = new List<Model> { "police", };
+                }
+                else
+                {
+                    Escorts = new List<Model> { "sheriff", };
+                }
+
+            }
+
+            float FarBehind = vehicle.Model.GetDimensions().Y;
+            for (int i = 1; i < RandomInt(2, 4); i++)
+            {
+                Model emsModel = null;
+                for (int patience = 0; patience < 20; patience++) if (!emsModel.IsValid) emsModel = Escorts[RandomInt(0, Escorts.Count - 1)];
+
+                if (emsModel.IsValid)
+                {
+                    Vehicle v = World.CreateVehicle(emsModel, vehicle.Position + (vehicle.ForwardVector * -FarBehind), vehicle.Heading);
+                    Script.Wait(50);
+                    if (CanWeUse(v))
+                    {
+                        FarBehind += v.Model.GetDimensions().Y;
+                        if (EscortLivery != -1) v.Livery = EscortLivery;
+
+                        v.CreateRandomPedOnSeat(VehicleSeat.Driver);
+                        Script.Wait(50);
+                        if (CanWeUse(v.Driver))
+                        {
+                            v.Driver.AlwaysKeepTask = true;
+                            // Function.Call(Hash.TASK_VEHICLE_MISSION_PED_TARGET, v.Driver, v ,vehicle.Driver, 12, 4f,  4 + 8 + 16 + 32, 1f, 1f, false);
+                            //    Function.Call(Hash.TASK_VEHICLE_ESCORT, v.Driver, v, vehicle.Driver, 0, 20f, 4 + 8 + 16 + 32, 1.5f, 5f, 10f);
+
+                            //  Function.Call(GTA.Native.Hash.TASK_VEHICLE_DRIVE_WANDER, v.Driver, v, 30f, (4 + 16 + 32 + 262144));
+                            Function.Call(Hash.SET_VEHICLE_FORWARD_SPEED, v, 15f);
+                            //v.Driver.IsPersistent = false;
+                            v.SirenActive = true;
+                            ToUnPersist.Add(v);
+                            if (DebugBlips)
+                            {
+                                v.AddBlip();
+                                v.CurrentBlip.Color = BlipColor.Blue;
+                                v.CurrentBlip.IsFlashing = true;
+                                v.CurrentBlip.Scale = 0.7f;
+                                v.CurrentBlip.IsShortRange = true;
+                                v.CurrentBlip.Name = "Rushing " + vehicle.FriendlyName;
+                            }
+                            seq = new TaskSequence();
+
+                            //  Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE, 0, v, Dest.X, Dest.Y, Dest.Z, 30f, 4 + 8 + 16 + 32, 10f);
+                            //  Function.Call(GTA.Native.Hash.TASK_VEHICLE_DRIVE_WANDER,0, v, 30f, (4 + 16 + 32 + 262144));
+                            Function.Call(Hash.TASK_VEHICLE_MISSION_PED_TARGET, v.Driver, v, vehicle.Driver, 12, 40f, 1 + 2 + 4 + 8 + 16 + 32, 1f, 1f, false);
+
+                            seq.Close(false);
+                            v.Driver.Task.PerformSequence(seq);
+                            seq.Dispose();
+                        }
+                        else
+                        {
+                            v.Delete();
+                        }
+                        //v.IsPersistent = false;
+                        // TemporalPersistence.Add(v);
+
+                    }
+                }
+
+
+            }
+
+            foreach (Vehicle v in ToUnPersist)
+            {
+                if (CanWeUse(v))
+                {
+                    TemporalPersistence.Add(v);
+
+                    //v.IsPersistent = false;                
+                    if (CanWeUse(v.Driver)) TemporalPersistence.Add(v.Driver);//v.Driver.IsPersistent = false;
+                }
+            }
+            //Driver.IsPersistent = false;
+            //vehicle.IsPersistent = false;
+        }
+        else
+        {
+            if (CanWeUse(vehicle)) vehicle.MarkAsNoLongerNeeded();
+            if (CanWeUse(Driver)) Driver.MarkAsNoLongerNeeded();
+        }
     }
 
 
@@ -3907,9 +5074,9 @@ Flags from decompiled scripts:
             }
             for (int s = -2; s < 20; s++)
             {
-                if (Function.Call<bool>(Hash.IS_VEHICLE_SEAT_FREE, Vehicle, s) && (CanWeUse(Squad[i+1])))
+                if (Function.Call<bool>(Hash.IS_VEHICLE_SEAT_FREE, Vehicle, s) && (CanWeUse(Squad[i + 1])))
                 {
-                    Function.Call<bool>(Hash.TASK_ENTER_VEHICLE, Squad[i+1], Vehicle, 10000, s, 2.0, 16, 0);
+                    Function.Call<bool>(Hash.TASK_ENTER_VEHICLE, Squad[i + 1], Vehicle, 10000, s, 2.0, 16, 0);
                     break;
                 }
             }
@@ -3940,23 +5107,23 @@ Flags from decompiled scripts:
         CriminalEventProb = config.GetValue<int>("OPTIONS", "CriminalEventBaseProb", 10);
         //BlackistedImportantEventsCooldown = config.GetValue<int>("OPTIONS", "ImportantEventsCooldown", 1);
 
-        EventCooldown= config.GetValue<int>("OPTIONS", "EventCooldown", 60)*1000;
+        EventCooldown = config.GetValue<int>("OPTIONS", "EventCooldown", 60) * 1000;
         EventFrecuency = config.GetValue<int>("OPTIONS", "EventFrecuency", 50);
 
 
         InteractionCooldown = config.GetValue<int>("OPTIONS", "InteractionCooldown", 20) * 1000;
-        InteractionFrecuency= config.GetValue<int>("OPTIONS", "InteractionFrecuency", 50);
+        InteractionFrecuency = config.GetValue<int>("OPTIONS", "InteractionFrecuency", 50);
 
         InteractionRange = config.GetValue<float>("OPTIONS", "InteractionRange", 200f);
 
         VehicleReplacer = config.GetValue<bool>("OPTIONS", "TrafficReplacer", true);
         TrafficInjector = config.GetValue<bool>("OPTIONS", "TrafficInjector", true);
 
-        
+
         TruckRespray = config.GetValue<bool>("OPTIONS", "TruckRespray", true);
 
 
-        Debug = config.GetValue<bool>("OPTIONS", "Debugmode", false);
+        Debug = config.GetValue<DebugLevel>("OPTIONS", "Debugmode", DebugLevel.None);
         DebugBlips = config.GetValue<bool>("OPTIONS", "DebugBlips", false);
         DebugOutput = config.GetValue<bool>("OPTIONS", "DebugOutput", false);
 
@@ -3975,8 +5142,8 @@ Flags from decompiled scripts:
 
         if (document == null) UI.Notify("~o~LivelyWorld couldn't find the xml file.");
         XmlElement root = document.DocumentElement;
-        if (Debug) AddNotification("CHAR_SOCIAL_CLUB", "~b~" + ScriptName + " " + ScriptVer, "LOADING", "Loading settings...");
-        if (Debug) AddNotification("", "", "", "Replacers:");
+        if (Debug >= DebugLevel.EventsAndScenarios) AddNotification("CHAR_SOCIAL_CLUB", "~b~" + ScriptName + " " + ScriptVer, "LOADING", "Loading settings...");
+        if (Debug >= DebugLevel.EventsAndScenarios) AddNotification("", "", "", "Replacers:");
         int Replaced = 0;
         foreach (XmlElement e in root.SelectNodes("//Replacer/model"))
         {
@@ -3986,12 +5153,12 @@ Flags from decompiled scripts:
             {
                 Replaced++;
                 if (source.IsValid) MonitoredModels.Add(source);
-                if (Debug) AddNotification("", "", "","Replacer: "+ e.GetAttribute("source") + " > " + e.GetAttribute("target"));
+                if (Debug >= DebugLevel.EventsAndScenarios) AddNotification("", "", "", "Replacer: " + e.GetAttribute("source") + " > " + e.GetAttribute("target"));
                 ReplacersList.Add(new Replacer(e.GetAttribute("source"), e.GetAttribute("target"), e.GetAttribute("tuned") == "true", e.GetAttribute("timeframe"), e.GetAttribute("zone"), e.GetAttribute("source") + " to " + e.GetAttribute("target") + " - " + e.GetAttribute("timeframe")));
             }
         }
 
-        int Spawned=0;
+        int Spawned = 0;
         foreach (XmlElement e in root.SelectNodes("//Spawner/Traffic/*"))
         {
             Model source = e.GetAttribute("source");
@@ -4013,7 +5180,7 @@ Flags from decompiled scripts:
                 if (prob == -1) prob = RandomInt(20, 80);
 
                 Spawned++;
-                if(Debug) AddNotification("", "", "", "Spawner: "+e.GetAttribute("source") + " > " + e.GetAttribute("target")); // if (Debug)
+                if (Debug >= DebugLevel.EventsAndScenarios) AddNotification("", "", "", "Spawner: " + e.GetAttribute("source") + " > " + e.GetAttribute("target")); // if (Debug >= DebugLevel.EventsAndScenarios)
                 TrafficSpawnerList.Add(new TrafficSpawner(e.GetAttribute("source"), e.GetAttribute("timeframe"), e.GetAttribute("zone"), terrain, cooldown, prob));
             }
         }
@@ -4029,7 +5196,7 @@ Flags from decompiled scripts:
                 text += e.GetAttribute("source") + ", ";
             }
         }
-        if (Debug) AddNotification("", "", "", "Benny's: " + text);
+        if (Debug >= DebugLevel.EventsAndScenarios) AddNotification("", "", "", "Benny's: " + text);
 
         int Racers = 0;
         text = "";
@@ -4043,7 +5210,7 @@ Flags from decompiled scripts:
                 Racers++;
             }
         }
-        if (Debug) AddNotification("", "", "", "Racers:" + text);
+        if (Debug >= DebugLevel.EventsAndScenarios) AddNotification("", "", "", "Racers:" + text);
 
         foreach (XmlElement e in root.SelectNodes("//Wrecks/model"))
         {
@@ -4054,26 +5221,44 @@ Flags from decompiled scripts:
             }
         }
         //Disabled events
-        text = "";
+        string EventText = "";
         foreach (XmlElement e in root.SelectNodes("//DisabledEvents/*"))
         {
             Array events;
             events = Enum.GetValues(typeof(EventType));
 
-            foreach(var ev in events)
+            foreach (var ev in events)
             {
                 if (e.InnerText == ev.ToString())
                 {
                     DisabledEvents.Add((EventType)ev);
-                    text += ev.ToString()+", ";
+                    EventText += ev.ToString() + ", ";
                 }
             }
         }
 
-        Notify("CHAR_SOCIAL_CLUB", "~b~" + ScriptName,"Loaded Info",Spawned + " vehicle spawners created.~n~" + Replaced + " vehicles injected into traffic.");
+
+        string ScenarioText = "";
+        foreach (XmlElement e in root.SelectNodes("//DisabledScenarios/*"))
+        {
+            Array events;
+            events = Enum.GetValues(typeof(ScenarioType));
+
+            foreach (var ev in events)
+            {
+                if (e.InnerText == ev.ToString())
+                {
+                    DisabledScenarios.Add((ScenarioType)ev);
+                    ScenarioText += ev.ToString() + ", ";
+                }
+            }
+        }
+
+        Notify("CHAR_SOCIAL_CLUB", "~b~" + ScriptName, "Loaded Info", Spawned + " vehicle spawners created.~n~" + Replaced + " vehicles injected into traffic.");
         Notify("", "", "", Racers + " Racers detected.~n~" + Customs + " Benny's vehicles detected.");
 
-        if (DisabledEvents.Count > 0) AddNotification("", "", "", "Disabled events:" + text);
+        if (DisabledEvents.Count > 0) AddNotification("", "", "", "~o~Disabled events: " + EventText);
+        if (DisabledScenarios.Count > 0) AddNotification("", "", "", "~o~Disabled Scenarios: " + ScenarioText);
 
         if (DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Settings loaded.");
 
@@ -4094,13 +5279,13 @@ Flags from decompiled scripts:
 
 
 
-        for (int i = 0; i < RandomInt(2,4); i++)
+        for (int i = 0; i < RandomInt(1, 3); i++)
         {
             Vehicle v = World.CreateVehicle(Racecars[RandomInt(0, Racecars.Count - 1)], spawnpoint);
 
             if (finishline == Vector3.Zero)
             {
-                finishline = GenerateSpawnPos(LerpByDistance(v.Position, Game.Player.Character.Position, 500), Nodetype.Road, false);
+                finishline = GenerateSpawnPos(LerpByDistance(v.Position, Game.Player.Character.Position, 800), Nodetype.Road, false);
                 //  if(hangout == Vector3.Zero)  hangout = GenerateSpawnPos(finishline, Nodetype.Offroad, false);
             }
 
@@ -4108,22 +5293,29 @@ Flags from decompiled scripts:
             spawnpoint += v.ForwardVector * -5;
             v.CreateRandomPedOnSeat(VehicleSeat.Driver);
             //Racers.Add(v);
-            RandomTuning(v, true, false);
+            RandomTuning(v, true, false, true, false, false);
             Function.Call(Hash.SET_ENTITY_LOAD_COLLISION_FLAG, v, true);
 
             Function.Call(GTA.Native.Hash.SET_VEHICLE_RADIO_ENABLED, v, true);
             Function.Call(GTA.Native.Hash.SET_VEHICLE_RADIO_LOUD, v, true);
+
+            v.RadioStation = RadioStation.ChannelX;
             v.Speed = 5f;
             v.IsAxlesStrong = true;
-            v.AddBlip();
-            v.CurrentBlip.Sprite = BlipSprite.PersonalVehicleCar;
-            v.CurrentBlip.Color = BlipColor.White;
+
+            if (DebugBlips)
+            {
+                v.AddBlip();
+                v.CurrentBlip.Sprite = BlipSprite.PersonalVehicleCar;
+                v.CurrentBlip.Color = BlipColor.White;
+                v.CurrentBlip.Name = "Racer";
+            }
 
             v.Driver.RelationshipGroup = RacersRLGroup;
             Script.Wait(100);
-            v.Driver.SetConfigFlag(46, false);
-            v.Driver.SetConfigFlag(17, true);
-            
+            //v.Driver.SetConfigFlag(46, false);
+            //v.Driver.SetConfigFlag(17, true);
+
             TemporalPersistence.Add(v.Driver);
 
             v.IsPersistent = false;
@@ -4131,15 +5323,16 @@ Flags from decompiled scripts:
 
             TaskSequence seq = new TaskSequence();
 
-            Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE, 0, v, finishline.X, finishline.Y, finishline.Z, 200f,4 + 8 + 16 + 32, 10f);
+            Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE, 0, v, finishline.X, finishline.Y, finishline.Z, 200f, 4 + 8 + 16 + 32, 10f);
             Function.Call(Hash.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE, 0, v, spawnpoint.X, spawnpoint.Y, spawnpoint.Z, 200f, 8 + 16 + 32, 10f);
-            seq.Close(true);            
-            v.Driver.Task.PerformSequence(seq);            
+            seq.Close(true);
+            v.Driver.Task.PerformSequence(seq);
             seq.Dispose();
             v.Driver.BlockPermanentEvents = false;
-            
 
-            
+            Function.Call(Hash.ADD_SHOCKING_EVENT_FOR_ENTITY, 86, v, 4000f);
+
+
         }
 
         CleanRacers = false;
@@ -4147,7 +5340,22 @@ Flags from decompiled scripts:
         //UI.Notify("Racers spawned");
     }
 
-    
+    public static int IsRoadBusy(Vector3 pos)
+    {
+        OutputArgument outArgA = new OutputArgument();
+        OutputArgument outArgB = new OutputArgument();
+        if (Function.Call<bool>(Hash.GET_VEHICLE_NODE_PROPERTIES, pos.X, pos.Y, pos.Z, outArgA, outArgB))
+        {
+            int busy = outArgA.GetResult<int>();
+            int flags = outArgB.GetResult<int>();
+
+            //DisplayHelpTextThisFrame("Busy:" + busy + "~n~Flags:" + flags);
+
+            return busy;
+            //BOOL GET_VEHICLE_NODE_PROPERTIES(float x, float y, float z, int *density, int* flags) // 0x0568566ACBB5DEDC 0xCC90110B
+        }
+        return 0;
+    }
 
     public static bool IsPlayerNearWater(float range)
     {
@@ -4200,7 +5408,69 @@ Flags from decompiled scripts:
         if (MapArea == Game.GenerateHash("countryside")) return "countryside";
         return MapArea.ToString();
     }
+    void StripOfAllPossible(Vehicle v, bool tyres, bool doors, bool hood, bool boot, bool forceBurned, bool smashWindows)
+    {
+        if (!CanWeUse(v)) return;
 
+
+        /*
+        VehicleColor NewVehicleC = VehicleColor.MetallicWhite;
+        VehicleColor VehicleC = v.PrimaryColor;
+        List<string> Modifiers = new List<string> { "Metallic", };
+
+        string ToLookFor = v.PrimaryColor.ToString();      
+        foreach (string mod in Modifiers)
+        {
+
+            if (VehicleC.ToString().ToLowerInvariant().Contains(color.ToLowerInvariant()))
+            {
+                ToLookFor = color.ToLowerInvariant();
+                break;
+            }
+        }
+        
+        foreach (VehicleColor color in Enum.GetValues(typeof(VehicleColor)))
+        {
+            if (((color.ToString().ToLowerInvariant().Contains("matte") || color.ToString().ToLowerInvariant().Contains("worn")) && color.ToString().ToLowerInvariant().Contains(ToLookFor)))
+            {
+                NewVehicleC = color;
+                UI.Notify("Found color: " + NewVehicleC);
+
+                v.PrimaryColor = NewVehicleC;
+                break;
+            }
+        }
+        */
+
+        v.IsDriveable = false;
+        if (tyres)
+        {
+            for (int i = 0; i < 10; i++)
+            {
+                Function.Call(Hash.SET_VEHICLE_TYRE_BURST, v, i, true, 1000);
+            }
+        }
+        if (smashWindows)
+        {
+            v.SmashWindow(VehicleWindow.FrontLeftWindow);
+            v.SmashWindow(VehicleWindow.FrontRightWindow);
+            v.SmashWindow(VehicleWindow.BackLeftWindow);
+            v.SmashWindow(VehicleWindow.BackRightWindow);
+        }
+        if (forceBurned)
+        {
+            Function.Call(Hash.SET_ENTITY_RENDER_SCORCHED, v, true);
+        }
+
+        for (int i = -2; i < 10; i++)
+        {
+            if (i == 4 && !boot) continue;
+            if (i == 5 && !hood) continue;
+            if (!doors) continue;
+            Function.Call(Hash.SET_VEHICLE_DOOR_BROKEN, v, i, true); //if (i != 1) 
+        }
+
+    }
 
     public static List<String> MessageQueue = new List<String>();
     public static int MessageQueueInterval = 8000;
@@ -4241,7 +5511,7 @@ Flags from decompiled scripts:
     public static int ConversationQueueReferenceTime = 0;
     public static void HandleConversation()
     {
-        if (ConversationQueueText.Count>0 && Game.GameTime > ConversationQueueReferenceTime)
+        if (ConversationQueueText.Count > 0 && Game.GameTime > ConversationQueueReferenceTime)
         {
             int Moretime = ((int)(ConversationQueueText[0].Length * 0.1f) * 1000);
             if (Moretime > 8000) Moretime = 8000;
@@ -4311,7 +5581,7 @@ Flags from decompiled scripts:
             UI.Notify(message);
         }
     }
-   public static void DisplayHelpTextThisFrame(string text)
+    public static void DisplayHelpTextThisFrame(string text)
     {
         Function.Call(Hash._SET_TEXT_COMPONENT_FORMAT, "STRING");
         Function.Call(Hash._ADD_TEXT_COMPONENT_STRING, text);
@@ -4320,19 +5590,23 @@ Flags from decompiled scripts:
     protected override void Dispose(bool dispose)
     {
         foreach (DrugDeal d in DrugDeals) d.Clear();
+
         if (CanWeUse(Carjacker)) Carjacker.MarkAsNoLongerNeeded();
+        if (CanWeUse(Overtaker)) Overtaker.MarkAsNoLongerNeeded();
+
+        if (CanWeUse(CarjackerTarget) && CarjackerTarget.IsPersistent) CarjackerTarget.MarkAsNoLongerNeeded();
         foreach (TaxiEvent t in Taxis) t.Clear();
         foreach (Hunter h in Hunters) h.Clear();
         foreach (TrafficSpawner tr in TrafficSpawnerList) tr.Clear();
 
         foreach (Entity e in TemporalPersistence)
         {
-            e.IsPersistent=false;
+            e.IsPersistent = false;
         }
 
         foreach (Vehicle v in Racers)
         {
-           if(CanWeUse(v)) v.IsPersistent = false;
+            if (CanWeUse(v)) v.IsPersistent = false;
 
             Ped p = v.Driver;
             if (!CanWeUse(p)) p = Function.Call<Ped>(Hash.GET_LAST_PED_IN_VEHICLE_SEAT, v, -1);
@@ -4340,7 +5614,7 @@ Flags from decompiled scripts:
         }
         base.Dispose(dispose);
 
-        foreach(Rope r in TrailerRopes) if(r.Exists()) r.Delete();
+        foreach (Rope r in TrailerRopes) if (r.Exists()) r.Delete();
     }
 
 
@@ -4413,10 +5687,10 @@ Flags from decompiled scripts:
         return null;
     }
 
-   public static void Detach(Vehicle carrier, Vehicle cargo)
+    public static void Detach(Vehicle carrier, Vehicle cargo)
     {
         cargo.Detach();
-       if(carrier==Game.Player.Character.CurrentVehicle) UI.Notify("Detaching " + cargo.FriendlyName + " from " + carrier.FriendlyName);
+        if (carrier == Game.Player.Character.CurrentVehicle) UI.Notify("Detaching " + cargo.FriendlyName + " from " + carrier.FriendlyName);
 
         if (CanWeUse(Game.Player.Character.CurrentVehicle) && carrier == Game.Player.Character.CurrentVehicle)
             if (Game.IsControlPressed(2, GTA.Control.ParachuteTurnLeftOnly))
@@ -4552,7 +5826,7 @@ Flags from decompiled scripts:
             return;
         }
 
-       if(OriginalCarrier==Game.Player.Character.CurrentVehicle) UI.Notify("Attaching " + ToCarry.FriendlyName + " to" + OriginalCarrier.FriendlyName);
+        if (OriginalCarrier == Game.Player.Character.CurrentVehicle) UI.Notify("Attaching " + ToCarry.FriendlyName + " to" + OriginalCarrier.FriendlyName);
         if (ToCarry.IsAttached())
         {
 
@@ -4639,6 +5913,6 @@ Flags from decompiled scripts:
 
         if (NotMadeToCarry) truckoffset = truckoffset = new Vector3(0f, (ToCarry.Model.GetDimensions().Y / 2f), 0f);
         Function.Call(Hash.ATTACH_ENTITY_TO_ENTITY_PHYSICALLY, ToCarry, carrier, 0, 0, CarrierOffset.X, CarrierOffset.Y, CarrierOffset.Z, truckoffset.X, truckoffset.Y, truckoffset.Z, pitch, 0f, 0f, 5000f, true, true, Collision, false, 2); //+ (v.Model.GetDimensions().Y/2f)
-        
+        ToCarry.Velocity = carrier.Velocity;
     }
 }

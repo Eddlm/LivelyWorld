@@ -33,7 +33,7 @@ namespace Lively_World
             TimeAlive = Game.GameTime+60000;
             //Distance = place.DistanceTo(Game.Player.Character.Position);
             GangDeal = gangs;
-            if(LivelyWorld.Debug)  UI.Notify("~b~Deal spawned");
+            if(LivelyWorld.Debug >= DebugLevel.EventsAndScenarios)  UI.Notify("~b~Deal spawned");
             //LivelyWorld.BlacklistedImportantEvents.Add(EventType.Deal);
             Vector3 carpos = World.GetSafeCoordForPed(center, false);
 
@@ -176,7 +176,7 @@ namespace Lively_World
                 Dealer.CurrentBlip.IsShortRange = true;
                 Dealer.CurrentBlip.Name = "Deal";
             }
-            if (LivelyWorld.Debug)
+            if (LivelyWorld.Debug >= DebugLevel.EventsAndScenarios)
             {
                 UI.Notify("~b~Spawned Deal");
             }

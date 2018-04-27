@@ -39,37 +39,37 @@ namespace Lively_World
         {
             if (VehiclesReplaced > 2)
             {
-               if(LivelyWorld.Debug) UI.Notify("~o~"+TargetVehicle+ " replacement entered cooldown");
+               if(LivelyWorld.Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~o~"+TargetVehicle+ " replacement entered cooldown");
                 Cooldown = Game.GameTime + 60000;
                 VehiclesReplaced = 0;
                 return false;
             }
             if (Cooldown < Game.GameTime)
             {
-                //if (LivelyWorld.Debug) UI.Notify(SourceVehicle + " - " + TargetVehicle + " - " + AreaOrZone + " - " + Time + " turn");
+                //if (LivelyWorld.Debug >= DebugLevel.EventsAndScenarios) UI.Notify(SourceVehicle + " - " + TargetVehicle + " - " + AreaOrZone + " - " + Time + " turn");
                 Vector3 PlayerPos = Game.Player.Character.Position;
 
                 //UI.Notify(World.GetZoneName(PlayerPos).ToLowerInvariant()+"-" + AreaOrZone);
                 if (AreaOrZone == "all" || LivelyWorld.IsInNamedArea(Game.Player.Character, AreaOrZone))
                 {
-                    //if (LivelyWorld.Debug) UI.Notify(SourceVehicle + " - "+AreaOrZone);
+                    //if (LivelyWorld.Debug >= DebugLevel.EventsAndScenarios) UI.Notify(SourceVehicle + " - "+AreaOrZone);
 
                     if (Time == "all" || (LivelyWorld.IsNightTime() && Time == "night") || (!LivelyWorld.IsNightTime() && Time == "day"))
                     {
-                        //if (LivelyWorld.Debug) UI.Notify("~g~ correct timeframe");
+                        //if (LivelyWorld.Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~g~ correct timeframe");
 
 
-                        //if (LivelyWorld.Debug) UI.Notify("~g~" + TargetVehicle + " - getting all vehicles");
+                        //if (LivelyWorld.Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~g~" + TargetVehicle + " - getting all vehicles");
 
                         foreach (Vehicle v in LivelyWorld.AllVehicles)
                         {//
-                            if (LivelyWorld.CanWeUse(v)  && (!v.IsOnScreen || !LivelyWorld.WouldPlayerNoticeChangesHere(v.Position)) && !LivelyWorld.BlacklistedVehicles.Contains(v)  && !Game.Player.Character.IsInRangeOf(v.Position, 10f) && !LivelyWorld.LastDriverIsPed(v, Game.Player.Character))
+                            if (LivelyWorld.CanWeUse(v) && !v.IsPersistent && (!v.IsOnScreen || !LivelyWorld.WouldPlayerNoticeChangesHere(v.Position)) && !LivelyWorld.BlacklistedVehicles.Contains(v)  && !Game.Player.Character.IsInRangeOf(v.Position, 10f) && !LivelyWorld.LastDriverIsPed(v, Game.Player.Character))
                             {
-                                //if (LivelyWorld.Debug) UI.Notify("Got a "+v.FriendlyName);
-                                if ( (SourceVehicle == "all" || v.Model == Game.GenerateHash(SourceVehicle) || v.FriendlyName.ToString().ToLowerInvariant() == SourceVehicle.ToLowerInvariant() ))
+                                //if (LivelyWorld.Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Got a "+v.FriendlyName);
+                                if (v.ClassType== (VehicleClass)Function.Call<int>(Hash.GET_VEHICLE_CLASS_FROM_NAME, Game.GenerateHash(TargetVehicle)) && (SourceVehicle == "all" || v.Model == Game.GenerateHash(SourceVehicle) || v.FriendlyName.ToString().ToLowerInvariant() == SourceVehicle.ToLowerInvariant() ))
                                 {
                                     if(LivelyWorld.DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - replacing " + SourceVehicle + " with a " + TargetVehicle + "");
-                                    if (LivelyWorld.Debug) UI.Notify("~g~" + SourceVehicle + " replaced with " + TargetVehicle);
+                                    if (LivelyWorld.Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~g~" + SourceVehicle + " replaced with " + TargetVehicle);
                                     LivelyWorld.ReplaceVehicle(v, TargetVehicle, ShouldBeTuned);
                                     VehiclesReplaced++;
                                     return true;
@@ -80,7 +80,7 @@ namespace Lively_World
                     }
                 }
             }
-            else if (LivelyWorld.Debug) UI.Notify("~o~"+SourceVehicle + " - " + TargetVehicle + " - " + AreaOrZone + " - " + Time + " is on cooldown");
+            else if (LivelyWorld.Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~o~"+SourceVehicle + " - " + TargetVehicle + " - " + AreaOrZone + " - " + Time + " is on cooldown");
             return false;
         }
     }

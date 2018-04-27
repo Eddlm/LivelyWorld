@@ -16,7 +16,7 @@ namespace Lively_World
     }
     public class TrafficSpawner
     {
-        float despawnRange=300f;
+        float despawnRange=150f;
         TerrainType Terrain;
         string AreaOrZone = "all";
         public string SourceVehicle = "all";
@@ -38,11 +38,11 @@ namespace Lively_World
             Cooldown = Game.GameTime + CooldownTime;
 
             Terrain = terrain;
-            if (Terrain == TerrainType.Air || Terrain == TerrainType.Water) despawnRange = 1200f;
+            if (Terrain == TerrainType.Air || Terrain == TerrainType.Water) despawnRange = 500f;
             if (area.Length > 0) AreaOrZone = area.ToLowerInvariant();
             if (timeframe.Length > 0) Time = timeframe;
             if(LivelyWorld.DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - added TrafficSpawner ("+source+", in "+area+")");
-           if(LivelyWorld.Debug) UI.Notify(SourceVehicle+ " spawner, timer:"+ (Cooldown- Game.GameTime) * 0.001f + "s");
+           if(LivelyWorld.Debug >= DebugLevel.EventsAndScenarios) UI.Notify(SourceVehicle+ " spawner, timer:"+ (Cooldown- Game.GameTime) * 0.001f + "s");
         }
 
         public void Clear()
@@ -84,10 +84,9 @@ namespace Lively_World
                             }
 
                             Vector3 spawnpos = Vector3.Zero;
-                            int patience = Game.GameTime;
-                            while (Game.GameTime > patience+3000 && (spawnpos==Vector3.Zero || !Function.Call<bool>(Hash.WOULD_ENTITY_BE_OCCLUDED, Game.GenerateHash(SourceVehicle), spawnpos.X, spawnpos.Y, spawnpos.Z, true))) //WOULD_ENTITY_BE_OCCLUDED(Hash entityModelHash, float x, float y, float z, BOOL p4)
-                            {
-                                
+                            int patience = 0;
+                          if( patience<3) //  while (Game.GameTime > patience+3000 && (spawnpos==Vector3.Zero || LivelyWorld.WouldPlayerNoticeChangesHere(spawnpos))) //WOULD_ENTITY_BE_OCCLUDED(Hash entityModelHash, float x, float y, float z, BOOL p4)
+                            {                                
                                 patience++;
                                 switch (Terrain)
                                 {
@@ -97,10 +96,11 @@ namespace Lively_World
 
                                             spawnpos = Vector3.Zero;
 
-                                            while(p<50 &&  (spawnpos == Vector3.Zero || LivelyWorld.WouldPlayerNoticeChangesHere(spawnpos) ))
+                                            while(p<50 &&  (spawnpos == Vector3.Zero || LivelyWorld.WouldPlayerNoticeChangesHere(spawnpos)))
                                             {
                                                 p++;
                                                 spawnpos=LivelyWorld.GenerateSpawnPos(Game.Player.Character.Position.Around(100 + (p * 10)), LivelyWorld.Nodetype.Road, false);
+                                                Script.Yield();
                                             }
                                             break;
                                         }
@@ -113,6 +113,7 @@ namespace Lively_World
                                                 
                                                 p++;
                                                 spawnpos = LivelyWorld.GenerateSpawnPos(Game.Player.Character.Position.Around(100+(p*10)), LivelyWorld.Nodetype.Offroad, false);
+                                                Script.Yield();
                                             }
                                             break;
                                         }
@@ -120,7 +121,7 @@ namespace Lively_World
                                         {
                                             int traffic = 0;
                                             foreach (Vehicle v in LivelyWorld.AllVehicles) if (v.HeightAboveGround>20 && (v.Model.IsHelicopter || v.Model.IsPlane)) traffic++;
-                                            if (traffic > 5)
+                                            if (traffic > 10)
                                             {
                                                 if (LivelyWorld.DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - too much air traffic (>5) to spawn more.");
                                                 return false;
@@ -141,7 +142,7 @@ namespace Lively_World
                                         {
                                             int traffic = 0;
                                             foreach (Vehicle v in LivelyWorld.AllVehicles) if (v.Model.IsBoat) traffic++;
-                                            if (traffic > 5)
+                                            if (traffic > 10)
                                             {
                                                 if (LivelyWorld.DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - too much boat traffic (> 5) to spawn more.");
                                                 return false;
@@ -173,34 +174,14 @@ namespace Lively_World
                             }
 
                             float angle = LivelyWorld.AngleBetweenVectors(Game.Player.Character.Position, spawnpos);
-                            if(Terrain!= TerrainType.Road) angle =+ LivelyWorld.RandomInt(-60, 60);
+                            if(Terrain!= TerrainType.Road) angle =+ LivelyWorld.RandomInt(-90, 90);
                             veh = World.CreateVehicle(SourceVehicle, spawnpos,angle);
                             if (LivelyWorld.CanWeUse(veh))
                             {
 
+
+                                veh.Position = veh.Position + (veh.RightVector * 2); //Make sure it spawns on the right side of the road, not the left (oncoming)
                                 string model = null;
-
-                                if (LivelyWorld.BobCatSecurity.Contains(veh.Model) && new Model("s_m_m_armoured_03").IsValid)
-                                {
-                                    model="s_m_m_armoured_03";
-                                }
-                                else if (veh.Model == "stockade2")
-                                {
-                                    model = "m_m_m_security_01";
-                                }
-                                else if (LivelyWorld.isCopVehicleRange(veh.Position, 3f))
-                                {
-                                    model = "s_m_y_cop_01";
-
-                                    if (veh.FriendlyName.Contains("LSPD") || veh.FriendlyName.Contains("Unmarked"))
-                                    {
-                                        model = "s_m_y_cop_01";
-                                    }  else if(veh.FriendlyName.Contains("LSSD") || veh.FriendlyName.Contains("BCSO"))
-                                    {
-                                         model = "S_M_Y_Sheriff_01";
-                                    }
-                                }
-                                
                                 if (model == null || new Model(model).IsValid==false)
                                 {
                                     ped= veh.CreateRandomPedOnSeat(VehicleSeat.Driver);
@@ -225,9 +206,9 @@ namespace Lively_World
                                         }
                                     }
                                     Function.Call(Hash.SET_HELI_BLADES_FULL_SPEED, veh);
-                                    veh.Velocity = new Vector3(0, 0, 0);
+                                    Function.Call(Hash.SET_VEHICLE_FORWARD_SPEED, veh, 30f);
                                     veh.LandingGear = VehicleLandingGear.Retracted;
-
+                                    
                                 }
                                 else if (veh.Model.IsPlane)
                                 {
@@ -266,18 +247,19 @@ namespace Lively_World
                                 }
                                 AmbientDrive();
 
-
                                 if (LivelyWorld.CarrierVehicles.Contains(veh.Model))
                                 {
                                     Model vehicle = LivelyWorld.RandomNormalVehicle();
-
-
                                     Vehicle cargo = World.CreateVehicle(vehicle, veh.Position + (veh.UpVector * 5f));
 
                                     if (LivelyWorld.CanWeUse(cargo)) LivelyWorld.Attach(veh, cargo);
-
+                                    LivelyWorld.TemporalPersistence.Add(cargo);
                                 }
-                                if (LivelyWorld.Debug) UI.Notify("~o~" + SourceVehicle + " spawned (and entered cooldown)");// if(LivelyWorld.Debug) 
+                                if (LivelyWorld.Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~o~" + SourceVehicle + " spawned (and entered cooldown)");// if(LivelyWorld.Debug >= DebugLevel.EventsAndScenarios) 
+
+
+                               // veh.IsPersistent = false;
+                              //  veh.Driver.IsPersistent = false;
                             }
                             else return false;
                             
@@ -285,9 +267,9 @@ namespace Lively_World
                         }
                     }
                 }
-                //else if (LivelyWorld.Debug) UI.Notify("~o~Spawner - " + SourceVehicle + " - " + AreaOrZone + " - " + Time + " is on cooldown");
+                //else if (LivelyWorld.Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~o~Spawner - " + SourceVehicle + " - " + AreaOrZone + " - " + Time + " is on cooldown");
             }
-            else
+            else if(LivelyWorld.CanWeUse(veh))
             {                
                 if (!veh.IsInRangeOf(Game.Player.Character.Position, despawnRange) && !LivelyWorld.WouldPlayerNoticeChangesHere(veh.Position))
                 {
@@ -305,7 +287,7 @@ namespace Lively_World
                 {
                     if (veh.Speed < 3f && LivelyWorld.CanWeUse(ped))
                     {
-                        AmbientDrive();
+                      //  AmbientDrive();
                     }
                 }
                 if (Cooldown < Game.GameTime) Cooldown = Game.GameTime + 40000;
@@ -315,7 +297,7 @@ namespace Lively_World
 
         public void AmbientDrive()
         {
-            //if (LivelyWorld.Debug) UI.Notify("Tasked " + veh.FriendlyName + " to drive, speed " + veh.Speed);
+            //if (LivelyWorld.Debug >= DebugLevel.EventsAndScenarios) UI.Notify("Tasked " + veh.FriendlyName + " to drive, speed " + veh.Speed);
             if (!LivelyWorld.CanWeUse(ped) || ped.IsInCombat) return;
         if (veh.Model.IsHelicopter || veh.Model.Hash == Game.GenerateHash("osprey"))
             {

@@ -30,21 +30,25 @@ namespace Lively_World
 
             Function.Call(Hash.REQUEST_MISSION_AUDIO_BANK, "SCRIPT\\HUNTING_2_ELK_CALLS", 0, -1);
 
-             if(LivelyWorld.DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Called for Hunter Event");
+            if (LivelyWorld.DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Called for Hunter Event");
             Vector3 fix = place;
-
-            int p = 0;
-
-            while (p < 100 && (fix == Vector3.Zero || LivelyWorld.GenerateSpawnPos(fix, LivelyWorld.Nodetype.Offroad, false).DistanceTo(fix)<40))
+            if( place == Vector3.Zero)
             {
-                p++;
-                fix=World.GetSafeCoordForPed(Game.Player.Character.Position.Around(100), false);
+                for (int i = 0; i < 50; i++)
+                {
+                    if (fix == Vector3.Zero)
+                    {
+                        fix = LivelyWorld.GenerateSpawnPos(fix, LivelyWorld.Nodetype.Offroad, false);// World.GetSafeCoordForPed(Game.Player.Character.Position.Around(100), false);
+                    }
+                }
             }
 
-             if(LivelyWorld.DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Found suitable place, spawning Hunter");
-            HunterPed = World.CreatePed(PedHash.Hunter, fix);            
+
+
+            if (LivelyWorld.DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Found suitable place, spawning Hunter");
+            HunterPed = World.CreatePed(PedHash.Hunter, fix);
             Vector3 pos = HunterPed.Position;
-            
+
 
             if (LivelyWorld.DebugBlips)
             {
