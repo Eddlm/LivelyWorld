@@ -31,22 +31,22 @@ namespace Lively_World
             Function.Call(Hash.REQUEST_MISSION_AUDIO_BANK, "SCRIPT\\HUNTING_2_ELK_CALLS", 0, -1);
 
             if (LivelyWorld.DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Called for Hunter Event");
-            Vector3 fix = place;
+            /*
             if( place == Vector3.Zero)
             {
                 for (int i = 0; i < 50; i++)
                 {
-                    if (fix == Vector3.Zero)
+                    if (place == Vector3.Zero)
                     {
-                        fix = LivelyWorld.GenerateSpawnPos(fix, LivelyWorld.Nodetype.Offroad, false);// World.GetSafeCoordForPed(Game.Player.Character.Position.Around(100), false);
+                        place = LivelyWorld.GenerateSpawnPos(fix, LivelyWorld.Nodetype.Offroad, false);// World.GetSafeCoordForPed(Game.Player.Character.Position.Around(100), false);
                     }
                 }
-            }
+            }*/
 
 
 
             if (LivelyWorld.DebugOutput) File.AppendAllText(@"scripts\LivelyWorldDebug.txt", "\n" + DateTime.Now + " - Found suitable place, spawning Hunter");
-            HunterPed = World.CreatePed(PedHash.Hunter, fix);
+            HunterPed = World.CreatePed(PedHash.Hunter, place);
             Vector3 pos = HunterPed.Position;
 
 

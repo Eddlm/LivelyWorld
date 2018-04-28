@@ -246,7 +246,10 @@ namespace Lively_World
                                     veh.CurrentBlip.Name = veh.FriendlyName;
                                 }
                                 AmbientDrive();
-
+                                veh.Alpha = 0;
+                                veh.Driver.Alpha = 0;
+                                LivelyWorld.FadeIn.Add(veh);
+                                LivelyWorld.FadeIn.Add(veh.Driver);
                                 if (LivelyWorld.CarrierVehicles.Contains(veh.Model))
                                 {
                                     Model vehicle = LivelyWorld.RandomNormalVehicle();
@@ -257,9 +260,13 @@ namespace Lively_World
                                 }
                                 if (LivelyWorld.Debug >= DebugLevel.EventsAndScenarios) UI.Notify("~o~" + SourceVehicle + " spawned (and entered cooldown)");// if(LivelyWorld.Debug >= DebugLevel.EventsAndScenarios) 
 
+                                if (!veh.SirenActive)
+                                {
+                                      veh.Driver.IsPersistent = false;
+                                    veh.IsPersistent = false;
 
-                               // veh.IsPersistent = false;
-                              //  veh.Driver.IsPersistent = false;
+                                }
+
                             }
                             else return false;
                             
@@ -327,7 +334,7 @@ namespace Lively_World
 
                 int drivingstyle = 1 + 2 + 8 + 16 + 32 + 128 + 256;
                 float speed = 20f;
-                if (veh.HasSiren && !LivelyWorld.DisabledEvents.Contains(EventType.EmergencyRushing) && !LivelyWorld.BobCatSecurity.Contains(veh.Model) && veh.Model!="coroner")
+                if (veh.HasSiren && LivelyWorld.CurrentlyAllowedEvents.Contains(EventType.EmergencyRushing) && !LivelyWorld.BobCatSecurity.Contains(veh.Model) && veh.Model!="coroner")
                 {
                     drivingstyle = 4 + 8 + 16 + 32;
                     speed = 25f;
