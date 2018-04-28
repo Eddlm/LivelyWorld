@@ -38,7 +38,7 @@ namespace Lively_World
                 hitch.CurrentBlip.Color = BlipColor.White;
                 hitch.CurrentBlip.Scale = 0.7f;
                 hitch.CurrentBlip.IsShortRange = true;
-
+                
             }
 
 
