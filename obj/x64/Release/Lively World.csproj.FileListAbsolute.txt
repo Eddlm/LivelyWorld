@@ -1,0 +1,10 @@
+D:\Mis Archivos\Proyectos\Mods\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\bin\x64\Release\Lively World.dll
+D:\Mis Archivos\Proyectos\Mods\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\bin\x64\Release\Lively World.pdb
+D:\Mis Archivos\Proyectos\Mods\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\bin\x64\Release\ScriptHookVDotNet.dll
+D:\Mis Archivos\Proyectos\Mods\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\obj\x64\Release\Lively_World.Properties.Resources.resources
+D:\Mis Archivos\Proyectos\Mods\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\obj\x64\Release\Lively World.csproj.GenerateResource.Cache
+D:\Mis Archivos\Proyectos\Mods\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\obj\x64\Release\Lively World.dll
+D:\Mis Archivos\Proyectos\Mods\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\obj\x64\Release\Lively World.pdb
+D:\Mis Archivos\Proyectos\Mods\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\obj\x64\Release\Lively World.csproj.CoreCompileInputs.cache
+D:\Mis Archivos\Proyectos\Mods\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\obj\x64\Release\Lively World.csproj.CopyComplete
+D:\Mis Archivos\Proyectos\Mods\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\obj\x64\Release\Lively World.csprojAssemblyReference.cache

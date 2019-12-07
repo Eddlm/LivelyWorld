@@ -1,0 +1,15 @@
+D:\Mis Archivos\Proyectos\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\obj\Debug\Ambient Events.csprojResolveAssemblyReference.cache
+D:\Mis Archivos\Proyectos\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\bin\Debug\Ambient Events.dll
+D:\Mis Archivos\Proyectos\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\bin\Debug\Ambient Events.pdb
+D:\Mis Archivos\Proyectos\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\bin\Debug\ScriptHookVDotNet.dll
+D:\Mis Archivos\Proyectos\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\obj\Debug\Ambient Events.dll
+D:\Mis Archivos\Proyectos\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\obj\Debug\Ambient Events.pdb
+D:\Mis Archivos\Proyectos\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\bin\Debug\Utilities.dll
+D:\Mis Archivos\Proyectos\Mods\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\bin\Debug\Ambient Events.dll
+D:\Mis Archivos\Proyectos\Mods\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\bin\Debug\Ambient Events.pdb
+D:\Mis Archivos\Proyectos\Mods\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\bin\Debug\ScriptHookVDotNet.dll
+D:\Mis Archivos\Proyectos\Mods\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\obj\Debug\Ambient Events.csprojResolveAssemblyReference.cache
+D:\Mis Archivos\Proyectos\Mods\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\obj\Debug\Ambient_Events.Properties.Resources.resources
+D:\Mis Archivos\Proyectos\Mods\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\obj\Debug\Ambient Events.csproj.GenerateResource.Cache
+D:\Mis Archivos\Proyectos\Mods\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\obj\Debug\Ambient Events.dll
+D:\Mis Archivos\Proyectos\Mods\GTAVScripting\ScriptProjects\Ambient Events\Ambient Events\obj\Debug\Ambient Events.pdb
